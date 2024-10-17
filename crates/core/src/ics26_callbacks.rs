@@ -49,7 +49,19 @@ mod test_module_upcasting {
         }
 
         fn upcast_to_core(&self) -> &dyn IbcCoreModule {
-            self
+            let this: &dyn IbcCoreModule = self;
+
+            // NOTE: use methods from `IbcCoreModule` here, to test
+            // the circular dependency on `Module` and `IbcCoreModule`
+            {
+                let port_id = PortId::new("transfer".into()).unwrap();
+                let channel_id = ChannelId::new(0);
+                assert!(this
+                    .on_chan_open_confirm_validate(&port_id, &channel_id)
+                    .is_ok());
+            }
+
+            this
         }
 
         fn upcast_to_core_mut(&mut self) -> &mut dyn IbcCoreModule {
@@ -136,7 +148,7 @@ mod test_module_upcasting {
             _: &PortId,
             _: &ChannelId,
         ) -> Result<(), ChannelError> {
-            unimplemented!()
+            Ok(())
         }
 
         fn on_chan_open_confirm_execute(
@@ -233,6 +245,8 @@ mod test_module_upcasting {
 
         let port_id = PortId::new("transfer".into()).unwrap();
         let channel_id = ChannelId::new(0);
+
+        _ = mock_module.upcast_to_core();
 
         _ = mock_module
             .upcast_to_core_mut()
