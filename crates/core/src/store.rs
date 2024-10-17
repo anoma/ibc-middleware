@@ -48,3 +48,56 @@ impl<S: Store> Store for NamespacedStore<'_, S> {
             .write(&format!("{}/{}", self.namespace, key), value)
     }
 }
+
+#[cfg(test)]
+mod store_test_utils {
+    use std::collections::BTreeMap;
+    use std::io;
+
+    use super::*;
+
+    #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct MockStore {
+        pub btreemap: BTreeMap<String, Vec<u8>>,
+    }
+
+    impl Store for MockStore {
+        fn read(&self, key: &str) -> Result<Vec<u8>, BoxError> {
+            self.btreemap.get(key).cloned().ok_or_else(|| {
+                let err = io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("no value found for key {key:?}"),
+                );
+                let err: BoxError = Box::new(err);
+                err
+            })
+        }
+
+        fn write(&mut self, key: &str, value: &[u8]) -> Result<(), BoxError> {
+            self.btreemap.insert(key.to_owned(), value.to_vec());
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod store_tests {
+    use self::store_test_utils::MockStore;
+    use super::*;
+
+    #[test]
+    fn namespaced_store() {
+        let mock_store = MockStore::default();
+        let mut namespaced = NamespacedStore::new("test-app", mock_store);
+
+        _ = namespaced.write("ganda", b"cena");
+        _ = namespaced.write("de boa", b"velho");
+        _ = namespaced.write("aew", b"mermau");
+
+        assert!(namespaced
+            .store
+            .btreemap
+            .keys()
+            .all(|k| k.starts_with("test-app/")));
+    }
+}
