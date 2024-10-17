@@ -1,16 +1,26 @@
-[package]
-name = "ibc-middleware"
-version = "0.1.0"
+[workspace]
+resolver = "2"
+
+members = ["crates/*"]
+
+[workspace.package]
+authors = ["Heliax AG <hello@heliax.dev>"]
 edition = "2021"
+homepage = "https://github.com/heliaxdev/ibc-middleware"
+keywords = ["blockchain", "privacy", "crypto", "protocol", "network"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/heliaxdev/ibc-middleware"
+version = "0.1.0"
 
-[dependencies.ibc-core-router]
+[workspace.dependencies.ibc-core-router]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
 
-[dependencies.ibc-core-router-types]
+[workspace.dependencies.ibc-core-router-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
 
-[dependencies.ibc-core-host-types]
+[workspace.dependencies.ibc-core-host-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"

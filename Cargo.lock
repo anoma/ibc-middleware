@@ -392,7 +392,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ibc-middleware"
+name = "ibc-middleware-core"
 version = "0.1.0"
 dependencies = [
  "ibc-core-host-types",
