@@ -7,6 +7,14 @@ extern crate alloc;
 pub mod ics26_callbacks;
 pub mod ics26_router;
 pub mod store;
+#[cfg(test)]
+pub mod test_utils;
+
+use alloc::boxed::Box;
+use core::error::Error;
+
+/// Type alias for a boxed [`Error`].
+pub type BoxError = Box<dyn Error + Send + Sync>;
 
 /*
 use self::metadata::Metadata;

@@ -1,13 +1,9 @@
 //! Middleware specific storage.
 
-use core::error::Error;
-
-use alloc::boxed::Box;
 use alloc::format;
 use alloc::vec::Vec;
 
-/// Type alias for a boxed [`Error`].
-pub type BoxError = Box<dyn Error + Send + Sync>;
+use super::BoxError;
 
 /// Key-value store of data belonging to an IBC middleware.
 ///
@@ -50,45 +46,14 @@ impl<S: Store> Store for NamespacedStore<'_, S> {
 }
 
 #[cfg(test)]
-mod store_test_utils {
-    use std::collections::BTreeMap;
-    use std::io;
-
-    use super::*;
-
-    #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct MockStore {
-        pub btreemap: BTreeMap<String, Vec<u8>>,
-    }
-
-    impl Store for MockStore {
-        fn read(&self, key: &str) -> Result<Vec<u8>, BoxError> {
-            self.btreemap.get(key).cloned().ok_or_else(|| {
-                let err = io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("no value found for key {key:?}"),
-                );
-                let err: BoxError = Box::new(err);
-                err
-            })
-        }
-
-        fn write(&mut self, key: &str, value: &[u8]) -> Result<(), BoxError> {
-            self.btreemap.insert(key.to_owned(), value.to_vec());
-            Ok(())
-        }
-    }
-}
-
-#[cfg(test)]
 mod store_tests {
-    use self::store_test_utils::MockStore;
     use super::*;
+    use crate::test_utils::MockStore;
 
     #[test]
     fn namespaced_store() {
         let mock_store = MockStore::default();
-        let mut namespaced = NamespacedStore::new("test-app", mock_store);
+        let mut namespaced = mock_store.namespaced("test-app");
 
         _ = namespaced.write("ganda", b"cena");
         _ = namespaced.write("de boa", b"velho");

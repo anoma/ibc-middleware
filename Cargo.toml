@@ -24,3 +24,11 @@ rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
 [workspace.dependencies.ibc-core-host-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
+
+[workspace.dependencies.ibc-core-channel-types]
+git = "https://github.com/heliaxdev/cosmos-ibc-rs"
+rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
+
+[workspace.dependencies.ibc-primitives]
+git = "https://github.com/heliaxdev/cosmos-ibc-rs"
+rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"

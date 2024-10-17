@@ -395,9 +395,11 @@ dependencies = [
 name = "ibc-middleware-core"
 version = "0.1.0"
 dependencies = [
+ "ibc-core-channel-types",
  "ibc-core-host-types",
  "ibc-core-router",
  "ibc-core-router-types",
+ "ibc-primitives",
 ]
 
 [[package]]

@@ -14,3 +14,7 @@ version.workspace = true
 ibc-core-router.workspace = true
 ibc-core-router-types.workspace = true
 ibc-core-host-types.workspace = true
+
+[dev-dependencies]
+ibc-primitives.workspace = true
+ibc-core-channel-types.workspace = true
