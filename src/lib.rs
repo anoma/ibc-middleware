@@ -1,32 +1,31 @@
 //! Core crate defining IBC middleware types and traits.
 
-/// Callbacks that modules must define, as specified in ICS-26.
-#[doc(inline)]
-pub use ibc_core_router::module::Module as ModuleCallbacks;
+#![cfg_attr(not(test), no_std)]
 
-#[doc(inline)]
-pub use ibc_core_channel_types::packet::Packet;
+extern crate alloc;
 
-#[doc(inline)]
-pub use ibc_core_channel_types::error::ChannelError;
+pub mod ics26_callbacks;
+pub mod ics26_router;
+pub mod store;
 
-#[doc(inline)]
-pub use ibc_core_channel::context::SendPacketExecutionContext;
+/*
+use self::metadata::Metadata;
+use self::store::Store;
 
-#[doc(inline)]
-pub use ibc_core_channel::context::SendPacketValidationContext;
+/// IBC middleware definition.
+pub trait Middleware: IbcCoreModule {
+    /// Middleware metadata. This is required to be
+    /// able to namespace the store data pertaining
+    /// to some IBC middleware.
+    type Metadata: Metadata;
 
-/// IBC module callbacks and channel communication methods.
-pub trait Middleware:
-    ModuleCallbacks + SendPacketExecutionContext + SendPacketValidationContext
-{
-    /// Execute the send op of an ICS-04 packet.
-    fn send_packet_execute(&mut self, packet: Packet) -> Result<(), ChannelError> {
-        ibc_core_channel::handler::send_packet_execute(self, packet)
-    }
+    /// Key-value store of data pertaining to the middleware.
+    type Store: Store<Self::Metadata>;
 
-    /// Validate the send op of an ICS-04 packet.
-    fn send_packet_validate(&self, packet: Packet) -> Result<(), ChannelError> {
-        ibc_core_channel::handler::send_packet_validate(self, packet)
-    }
+    /// Return a reference to the [`Store`].
+    fn store(&self) -> &Self::Store;
+
+    /// Return a mutable reference to the [`Store`].
+    fn store_mut(&mut self) -> &mut Self::Store;
 }
+*/

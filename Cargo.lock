@@ -285,34 +285,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "ibc-client-wasm-types"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
-dependencies = [
- "base64 0.22.1",
- "displaydoc",
- "ibc-core-client",
- "ibc-core-host-types",
- "ibc-primitives",
- "ibc-proto",
-]
-
-[[package]]
-name = "ibc-core-channel"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
-dependencies = [
- "ibc-core-channel-types",
- "ibc-core-client",
- "ibc-core-commitment-types",
- "ibc-core-connection",
- "ibc-core-handler-types",
- "ibc-core-host",
- "ibc-core-router",
- "ibc-primitives",
-]
-
-[[package]]
 name = "ibc-core-channel-types"
 version = "0.54.0"
 source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
@@ -327,35 +299,6 @@ dependencies = [
  "ibc-proto",
  "serde",
  "sha2",
- "subtle-encoding",
- "tendermint",
-]
-
-[[package]]
-name = "ibc-core-client"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
-dependencies = [
- "ibc-core-client-context",
- "ibc-core-client-types",
- "ibc-core-commitment-types",
- "ibc-core-handler-types",
- "ibc-core-host",
- "ibc-primitives",
-]
-
-[[package]]
-name = "ibc-core-client-context"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
-dependencies = [
- "derive_more",
- "displaydoc",
- "ibc-core-client-types",
- "ibc-core-commitment-types",
- "ibc-core-handler-types",
- "ibc-core-host-types",
- "ibc-primitives",
  "subtle-encoding",
  "tendermint",
 ]
@@ -392,20 +335,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ibc-core-connection"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
-dependencies = [
- "ibc-client-wasm-types",
- "ibc-core-client",
- "ibc-core-connection-types",
- "ibc-core-handler-types",
- "ibc-core-host",
- "ibc-primitives",
- "prost",
-]
-
-[[package]]
 name = "ibc-core-connection-types"
 version = "0.54.0"
 source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
@@ -420,44 +349,6 @@ dependencies = [
  "serde",
  "subtle-encoding",
  "tendermint",
-]
-
-[[package]]
-name = "ibc-core-handler-types"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
-dependencies = [
- "derive_more",
- "displaydoc",
- "ibc-core-channel-types",
- "ibc-core-client-types",
- "ibc-core-commitment-types",
- "ibc-core-connection-types",
- "ibc-core-host-types",
- "ibc-core-router-types",
- "ibc-primitives",
- "ibc-proto",
- "serde",
- "subtle-encoding",
- "tendermint",
-]
-
-[[package]]
-name = "ibc-core-host"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38bd2a32f35117d4d9165a3c68c64ccd87ad56dd#38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
-dependencies = [
- "derive_more",
- "displaydoc",
- "ibc-core-channel-types",
- "ibc-core-client-context",
- "ibc-core-client-types",
- "ibc-core-commitment-types",
- "ibc-core-connection-types",
- "ibc-core-handler-types",
- "ibc-core-host-types",
- "ibc-primitives",
- "subtle-encoding",
 ]
 
 [[package]]
@@ -504,8 +395,7 @@ dependencies = [
 name = "ibc-middleware"
 version = "0.1.0"
 dependencies = [
- "ibc-core-channel",
- "ibc-core-channel-types",
+ "ibc-core-host-types",
  "ibc-core-router",
  "ibc-core-router-types",
 ]
