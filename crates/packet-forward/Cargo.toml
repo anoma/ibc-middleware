@@ -1,0 +1,14 @@
+[package]
+name = "ibc-middleware-packet-forward"
+description = "IBC packet forward middleware implementation targeting ibc-rs"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+ibc-middleware-core = { path = "../core" }
