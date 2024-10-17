@@ -7,6 +7,8 @@ use ibc_core_router_types::module::ModuleId;
 
 use crate::ics26_callbacks::Module;
 
+// TODO: add some router casting tests
+
 /// Router, as specified in ICS-26, which binds modules to ports.
 pub trait Router {
     /// Return a reference to a [`Module`] registered against the specified [`ModuleId`].
