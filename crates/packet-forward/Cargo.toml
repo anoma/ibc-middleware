@@ -13,8 +13,9 @@ version.workspace = true
 [dependencies]
 ibc-middleware-core = { path = "../core" }
 
+dur.workspace = true
+ibc-app-transfer = { workspace = true, features = ["serde"] }
 ibc-app-transfer-types.workspace = true
-ibc-app-transfer.workspace = true
 ibc-core-channel-types.workspace = true
 ibc-core-channel.workspace = true
 ibc-core-host-types.workspace = true
