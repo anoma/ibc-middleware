@@ -7,9 +7,10 @@ extern crate alloc;
 
 pub mod msg;
 
-use ibc_app_transfer::context::TokenTransferExecutionContext;
+use ibc_app_transfer::context::{TokenTransferExecutionContext, TokenTransferValidationContext};
+use ibc_app_transfer::handler::{send_transfer_execute, send_transfer_validate};
 use ibc_app_transfer_types::packet::PacketData;
-use ibc_core_channel::context::SendPacketExecutionContext;
+use ibc_core_channel::context::{SendPacketExecutionContext, SendPacketValidationContext};
 use ibc_core_channel_types::acknowledgement::Acknowledgement;
 use ibc_core_channel_types::channel::{Counterparty, Order};
 use ibc_core_channel_types::error::{ChannelError, PacketError};
@@ -23,23 +24,44 @@ use ibc_middleware_core::store::Store;
 use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
 
+/// Context data required by the [`PacketForwardMiddleware`].
 pub trait PfmContext {
-    fn send_packet_execution_ctx(&self) -> &dyn SendPacketExecutionContext;
+    /// Context required by [`send_transfer_execute`].
+    type SendPacketExecutionContext: SendPacketExecutionContext;
 
-    fn send_packet_execution_ctx_mut(&mut self) -> &mut dyn SendPacketExecutionContext;
+    /// Context required by [`send_transfer_validate`].
+    type SendPacketValidationContext: SendPacketValidationContext;
 
-    fn token_transfer_execution_ctx(&self) -> &dyn TokenTransferExecutionContext;
+    /// Context required by [`send_transfer_execute`].
+    type TokenTransferExecutionContext: TokenTransferExecutionContext;
 
-    fn token_transfer_execution_ctx_mut(&mut self) -> &mut dyn TokenTransferExecutionContext;
+    /// Context required by [`send_transfer_validate`].
+    type TokenTransferValidationContext: TokenTransferValidationContext;
+
+    /// Return a [`SendPacketExecutionContext`] impl.
+    fn send_packet_execution_ctx(&mut self) -> &mut Self::SendPacketExecutionContext;
+
+    /// Return a [`SendPacketValidationContext`] impl.
+    fn send_packet_validation_ctx(&self) -> &Self::SendPacketValidationContext;
+
+    /// Return a [`TokenTransferExecutionContext`] impl.
+    fn token_transfer_execution_ctx(&mut self) -> &mut Self::TokenTransferExecutionContext;
+
+    /// Return a [`TokenTransferValidationContext`] impl.
+    fn token_transfer_validation_ctx(&self) -> &Self::TokenTransferValidationContext;
 }
 
-/// [Packet forwarding middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md).
+/// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
+/// entrypoint, which intercepts compatible ICS-20 packets and forwards them to other chains.
 #[derive(Debug)]
 pub struct PacketForwardMiddleware<M> {
     next: M,
 }
 
-impl<M: Module> Module for PacketForwardMiddleware<M> {
+impl<M> Module for PacketForwardMiddleware<M>
+where
+    M: Module + PfmContext,
+{
     fn store(&self) -> &dyn Store {
         self.next.store()
     }
@@ -57,10 +79,9 @@ impl<M: Module> Module for PacketForwardMiddleware<M> {
     }
 }
 
-impl<M: Module> IbcCoreModule for PacketForwardMiddleware<M>
+impl<M> IbcCoreModule for PacketForwardMiddleware<M>
 where
-    Self: PfmContext,
-    M: Module,
+    M: Module + PfmContext,
 {
     fn on_recv_packet_execute(
         &mut self,
