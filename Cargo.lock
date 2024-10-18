@@ -406,7 +406,12 @@ dependencies = [
 name = "ibc-middleware-packet-forward"
 version = "0.1.0"
 dependencies = [
+ "ibc-core-channel-types",
+ "ibc-core-host-types",
+ "ibc-core-router",
+ "ibc-core-router-types",
  "ibc-middleware-core",
+ "ibc-primitives",
 ]
 
 [[package]]

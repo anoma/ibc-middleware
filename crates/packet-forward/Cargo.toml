@@ -12,3 +12,8 @@ version.workspace = true
 
 [dependencies]
 ibc-middleware-core = { path = "../core" }
+ibc-core-channel-types.workspace = true
+ibc-core-host-types.workspace = true
+ibc-core-router-types.workspace = true
+ibc-core-router.workspace = true
+ibc-primitives.workspace = true
