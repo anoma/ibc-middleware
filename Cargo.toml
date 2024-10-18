@@ -13,6 +13,14 @@ readme = "README.md"
 repository = "https://github.com/heliaxdev/ibc-middleware"
 version = "0.1.0"
 
+[workspace.dependencies]
+serde_json = "1.0"
+
+[workspace.dependencies.serde]
+version = "1.0"
+default-features = false
+features = ["alloc", "derive"]
+
 [workspace.dependencies.ibc-core-router]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
@@ -29,6 +37,18 @@ rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
 
+[workspace.dependencies.ibc-core-channel]
+git = "https://github.com/heliaxdev/cosmos-ibc-rs"
+rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
+
 [workspace.dependencies.ibc-primitives]
+git = "https://github.com/heliaxdev/cosmos-ibc-rs"
+rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
+
+[workspace.dependencies.ibc-app-transfer-types]
+git = "https://github.com/heliaxdev/cosmos-ibc-rs"
+rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"
+
+[workspace.dependencies.ibc-app-transfer]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "38bd2a32f35117d4d9165a3c68c64ccd87ad56dd"

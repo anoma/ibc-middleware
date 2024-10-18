@@ -5,6 +5,11 @@
 
 extern crate alloc;
 
+pub mod msg;
+
+use ibc_app_transfer::context::TokenTransferExecutionContext;
+use ibc_app_transfer_types::packet::PacketData;
+use ibc_core_channel::context::SendPacketExecutionContext;
 use ibc_core_channel_types::acknowledgement::Acknowledgement;
 use ibc_core_channel_types::channel::{Counterparty, Order};
 use ibc_core_channel_types::error::{ChannelError, PacketError};
@@ -17,6 +22,16 @@ use ibc_middleware_core::ics26_callbacks::Module;
 use ibc_middleware_core::store::Store;
 use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
+
+pub trait PfmContext {
+    fn send_packet_execution_ctx(&self) -> &dyn SendPacketExecutionContext;
+
+    fn send_packet_execution_ctx_mut(&mut self) -> &mut dyn SendPacketExecutionContext;
+
+    fn token_transfer_execution_ctx(&self) -> &dyn TokenTransferExecutionContext;
+
+    fn token_transfer_execution_ctx_mut(&mut self) -> &mut dyn TokenTransferExecutionContext;
+}
 
 /// [Packet forwarding middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md).
 #[derive(Debug)]
@@ -42,7 +57,65 @@ impl<M: Module> Module for PacketForwardMiddleware<M> {
     }
 }
 
-impl<M: Module> IbcCoreModule for PacketForwardMiddleware<M> {
+impl<M: Module> IbcCoreModule for PacketForwardMiddleware<M>
+where
+    Self: PfmContext,
+    M: Module,
+{
+    fn on_recv_packet_execute(
+        &mut self,
+        packet: &Packet,
+        relayer: &Signer,
+    ) -> (ModuleExtras, Acknowledgement) {
+        let Ok(_data) = serde_json::from_slice::<PacketData>(&packet.data) else {
+            // NB: if `packet.data` is not a valid fungible token transfer
+            // packet, we forward the call to the next middleware
+            return self.next.on_recv_packet_execute(packet, relayer);
+        };
+
+        self.next.on_recv_packet_execute(packet, relayer)
+    }
+
+    fn on_acknowledgement_packet_validate(
+        &self,
+        packet: &Packet,
+        acknowledgement: &Acknowledgement,
+        relayer: &Signer,
+    ) -> Result<(), PacketError> {
+        self.next
+            .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
+    }
+
+    fn on_acknowledgement_packet_execute(
+        &mut self,
+        packet: &Packet,
+        acknowledgement: &Acknowledgement,
+        relayer: &Signer,
+    ) -> (ModuleExtras, Result<(), PacketError>) {
+        self.next
+            .on_acknowledgement_packet_execute(packet, acknowledgement, relayer)
+    }
+
+    fn on_timeout_packet_validate(
+        &self,
+        packet: &Packet,
+        relayer: &Signer,
+    ) -> Result<(), PacketError> {
+        self.next.on_timeout_packet_validate(packet, relayer)
+    }
+
+    fn on_timeout_packet_execute(
+        &mut self,
+        packet: &Packet,
+        relayer: &Signer,
+    ) -> (ModuleExtras, Result<(), PacketError>) {
+        self.next.on_timeout_packet_execute(packet, relayer)
+    }
+
+    // =========================================================================
+    // the calls below are simply forwarded to the next middleware
+    // =========================================================================
+
     fn on_chan_open_init_validate(
         &self,
         order: Order,
@@ -186,49 +259,5 @@ impl<M: Module> IbcCoreModule for PacketForwardMiddleware<M> {
         channel_id: &ChannelId,
     ) -> Result<ModuleExtras, ChannelError> {
         self.next.on_chan_close_confirm_execute(port_id, channel_id)
-    }
-
-    fn on_recv_packet_execute(
-        &mut self,
-        packet: &Packet,
-        relayer: &Signer,
-    ) -> (ModuleExtras, Acknowledgement) {
-        self.next.on_recv_packet_execute(packet, relayer)
-    }
-
-    fn on_acknowledgement_packet_validate(
-        &self,
-        packet: &Packet,
-        acknowledgement: &Acknowledgement,
-        relayer: &Signer,
-    ) -> Result<(), PacketError> {
-        self.next
-            .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
-    }
-
-    fn on_acknowledgement_packet_execute(
-        &mut self,
-        packet: &Packet,
-        acknowledgement: &Acknowledgement,
-        relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
-        self.next
-            .on_acknowledgement_packet_execute(packet, acknowledgement, relayer)
-    }
-
-    fn on_timeout_packet_validate(
-        &self,
-        packet: &Packet,
-        relayer: &Signer,
-    ) -> Result<(), PacketError> {
-        self.next.on_timeout_packet_validate(packet, relayer)
-    }
-
-    fn on_timeout_packet_execute(
-        &mut self,
-        packet: &Packet,
-        relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
-        self.next.on_timeout_packet_execute(packet, relayer)
     }
 }
