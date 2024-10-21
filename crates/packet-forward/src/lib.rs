@@ -5,7 +5,7 @@
 
 extern crate alloc;
 
-pub mod msg;
+mod msg;
 
 use ibc_app_transfer::context::{TokenTransferExecutionContext, TokenTransferValidationContext};
 use ibc_app_transfer::handler::{send_transfer_execute, send_transfer_validate};
