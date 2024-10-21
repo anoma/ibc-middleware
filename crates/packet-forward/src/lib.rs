@@ -24,6 +24,9 @@ use ibc_middleware_core::store::Store;
 use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
 
+/// The storage namespace of the PFM.
+const STORE_NAMESPACE: &str = "packet-forward-middleware";
+
 /// Context data required by the [`PacketForwardMiddleware`].
 pub trait PfmContext {
     /// Context required by [`send_transfer_execute`].
