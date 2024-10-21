@@ -1,26 +1,42 @@
+use alloc::string::{String, ToString};
 use core::fmt;
 use core::str::FromStr;
-use alloc::string::{String, ToString};
 
 use ibc_core_host_types::identifiers::{ChannelId, PortId};
-use serde::{Deserializer, Deserialize, Serializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct PacketMetadata {
     pub forward: ForwardMetadata,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct ForwardMetadata {
+    #[serde(deserialize_with = "deserialize_non_empty_str")]
+    pub receiver: String,
     #[serde(deserialize_with = "deserialize_from_str")]
     pub port: PortId,
     #[serde(deserialize_with = "deserialize_from_str")]
     pub channel: ChannelId,
-    pub timeout: Duration,
+    pub timeout: Option<Duration>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retries: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+fn deserialize_non_empty_str<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if !s.is_empty() {
+        Ok(s)
+    } else {
+        Err(serde::de::Error::custom(
+            "IBC forward receiver cannot be empty",
+        ))
+    }
 }
 
 fn deserialize_from_str<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -80,31 +96,204 @@ mod duration {
         }
     }
 
-    #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+    /// Duration type whose serialization routines are compatible with Strange Love's
+    /// PFM JSON forward messages.
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
     #[serde(from = "AllDuration")]
     #[repr(transparent)]
-    pub struct Duration(
-        #[serde(serialize_with = "serialize_to_str")]
-        pub dur::Duration,
-    );
+    pub struct Duration(#[serde(serialize_with = "serialize_to_str")] pub dur::Duration);
 
     #[cfg(test)]
     mod test_duration {
         use super::*;
+    }
+}
 
-        #[test]
-        fn serde_roundtrip_parsing() {
-            const DUR_STR: &str = "\"1m5s\"";
-            const DUR_F64: &str = "1.2345";
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-            let expected_from_str = Duration(dur::Duration::from_secs(65));
-            let expected_from_f64 = Duration(dur::Duration::from_nanos(1));
+    #[test]
+    fn duration_serde_roundtrip_parsing() {
+        const DUR_STR: &str = "\"1m5s\"";
+        const DUR_F64: &str = "1.2345";
 
-            let parsed: Duration = serde_json::from_str(DUR_STR).unwrap();
-            assert_eq!(parsed, expected_from_str);
+        let expected_from_str = Duration(dur::Duration::from_secs(65));
+        let expected_from_f64 = Duration(dur::Duration::from_nanos(1));
 
-            let parsed: Duration = serde_json::from_str(DUR_F64).unwrap();
-            assert_eq!(parsed, expected_from_f64);
+        let parsed: Duration = serde_json::from_str(DUR_STR).unwrap();
+        assert_eq!(parsed, expected_from_str);
+
+        let parsed: Duration = serde_json::from_str(DUR_F64).unwrap();
+        assert_eq!(parsed, expected_from_f64);
+    }
+
+    #[test]
+    fn forward_msg_parsing() {
+        struct TestCase {
+            raw_json: &'static str,
+            expected: Result<PacketMetadata, ()>,
+        }
+
+        impl TestCase {
+            fn assert(self) {
+                let parsed = serde_json::from_str::<PacketMetadata>(self.raw_json).map_err(|_| ());
+                assert_eq!(parsed, self.expected);
+            }
+        }
+
+        let cases = [
+            TestCase {
+                raw_json: r#"
+                    {
+                      "forward": {
+                        "channel": "channel-1180",
+                        "port": "transfer",
+                        "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                      },
+                      "ibc_callback": "osmo1ewll8h7up3g0ca2z9ur9e6dv6an64snxg5k8tmzylg6uprkyhgzszjgdzr"
+                    }
+                "#,
+                expected: Ok(PacketMetadata {
+                    forward: ForwardMetadata {
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        port: PortId::transfer(),
+                        channel: ChannelId::new(1180),
+                        timeout: None,
+                        retries: None,
+                        next: None,
+                    },
+                }),
+            },
+            TestCase {
+                raw_json: r#"
+                    {
+                      "forward": {
+                        "channel": "channel-1180",
+                        "port": "transfer",
+                        "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                      }
+                    }
+                "#,
+                expected: Ok(PacketMetadata {
+                    forward: ForwardMetadata {
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        port: PortId::transfer(),
+                        channel: ChannelId::new(1180),
+                        timeout: None,
+                        retries: None,
+                        next: None,
+                    },
+                }),
+            },
+            TestCase {
+                raw_json: r#"
+                    {
+                      "forward": {
+                        "channel": "channel-1180",
+                        "port": "transfer",
+                        "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt",
+                        "next": {
+                            "forward": {
+                                "receiver": "noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv",
+                                "channel": "channel-1181",
+                                "port": "transfer"
+                            }
+                        }
+                      }
+                    }
+                "#,
+                expected: Ok(PacketMetadata {
+                    forward: ForwardMetadata {
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        port: PortId::transfer(),
+                        channel: ChannelId::new(1180),
+                        timeout: None,
+                        retries: None,
+                        next: Some(serde_json::Map::from_iter([(
+                            "forward".to_owned(),
+                            serde_json::Value::Object(serde_json::Map::from_iter([
+                                (
+                                    "receiver".to_owned(),
+                                    serde_json::Value::String(
+                                        "noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv".to_owned(),
+                                    ),
+                                ),
+                                (
+                                    "channel".to_owned(),
+                                    serde_json::Value::String("channel-1181".to_owned()),
+                                ),
+                                (
+                                    "port".to_owned(),
+                                    serde_json::Value::String("transfer".to_owned()),
+                                ),
+                            ])),
+                        )])),
+                    },
+                }),
+            },
+            TestCase {
+                raw_json: r#"
+                    {
+                      "forwar": {
+                        "channel": "channel-1180",
+                        "port": "transfer",
+                        "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                      }
+                    }
+                "#,
+                expected: Err(()),
+            },
+            TestCase {
+                raw_json: r#"
+                    {
+                      "forward": {
+                        "channel": "channel-",
+                        "port": "transfer",
+                        "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                      }
+                    }
+                "#,
+                expected: Err(()),
+            },
+            TestCase {
+                raw_json: r#"
+                    {
+                      "forward": {
+                        "channel": "channel-1234",
+                        "port": "transfer",
+                        "receiver": ""
+                      }
+                    }
+                "#,
+                expected: Err(()),
+            },
+            TestCase {
+                raw_json: r#"
+                    {
+                      "forward": {
+                        "channel": "channel-1180",
+                        "port": "transfer",
+                        "timeout": "1m20s",
+                        "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                      }
+                    }
+                "#,
+                expected: Ok(PacketMetadata {
+                    forward: ForwardMetadata {
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        port: PortId::transfer(),
+                        channel: ChannelId::new(1180),
+                        timeout: Some(Duration(dur::Duration::from_secs(80))),
+                        retries: None,
+                        next: None,
+                    },
+                }),
+            },
+        ];
+
+        for case in cases {
+            case.assert();
         }
     }
 }
