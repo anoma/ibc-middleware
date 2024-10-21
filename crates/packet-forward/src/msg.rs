@@ -117,11 +117,6 @@ mod duration {
     #[serde(from = "AllDuration")]
     #[repr(transparent)]
     pub struct Duration(#[serde(serialize_with = "serialize_to_str")] pub dur::Duration);
-
-    #[cfg(test)]
-    mod test_duration {
-        use super::*;
-    }
 }
 
 #[cfg(test)]
