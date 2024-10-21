@@ -7,11 +7,16 @@ extern crate alloc;
 
 mod msg;
 
+use alloc::format;
+use core::fmt;
+
 use ibc_app_transfer::context::{TokenTransferExecutionContext, TokenTransferValidationContext};
 use ibc_app_transfer::handler::{send_transfer_execute, send_transfer_validate};
 use ibc_app_transfer_types::packet::PacketData;
 use ibc_core_channel::context::{SendPacketExecutionContext, SendPacketValidationContext};
-use ibc_core_channel_types::acknowledgement::Acknowledgement;
+use ibc_core_channel_types::acknowledgement::{
+    Acknowledgement, AcknowledgementStatus, StatusValue as AckStatusValue,
+};
 use ibc_core_channel_types::channel::{Counterparty, Order};
 use ibc_core_channel_types::error::{ChannelError, PacketError};
 use ibc_core_channel_types::packet::Packet;
@@ -23,6 +28,26 @@ use ibc_middleware_core::ics26_callbacks::Module;
 use ibc_middleware_core::store::Store;
 use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
+
+macro_rules! unwrap_recv_err {
+    ($result:expr, $pat:pat => $exp:expr $(,)?) => {
+        match $result {
+            Ok($pat) => $exp,
+            Err(e) => return (ModuleExtras::empty(), new_error_ack(e).into()),
+        }
+    };
+
+    ($result:expr) => {
+        unwrap_recv_err!($result, x => x)
+    };
+}
+
+enum MiddlewareError {
+    /// Error message.
+    Message(String),
+    /// Forward the call to the next middleware.
+    Forward,
+}
 
 /// The namespace of the PFM.
 const NAMESPACE: &str = "packet-forward-middleware";
@@ -41,6 +66,9 @@ pub trait PfmContext {
     /// Context required by [`send_transfer_validate`].
     type TokenTransferValidationContext: TokenTransferValidationContext;
 
+    /// Error returned by fallible operations.
+    type Error: fmt::Display;
+
     /// Return a [`SendPacketExecutionContext`] impl.
     fn send_packet_execution_ctx(&mut self) -> &mut Self::SendPacketExecutionContext;
 
@@ -52,6 +80,10 @@ pub trait PfmContext {
 
     /// Return a [`TokenTransferValidationContext`] impl.
     fn token_transfer_validation_ctx(&self) -> &Self::TokenTransferValidationContext;
+
+    /// Given some arbitrary data blob, return an address native
+    /// to the source chain.
+    fn encode_blob_as_address(&self, data: &[u8]) -> Result<String, Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -82,6 +114,35 @@ where
     }
 }
 
+impl<M> PacketForwardMiddleware<M>
+where
+    M: Module + PfmContext,
+{
+    fn _on_recv_packet_execute(
+        &mut self,
+        packet: &Packet,
+        relayer: &Signer,
+    ) -> Result<(ModuleExtras, Acknowledgement), MiddlewareError> {
+        let metadata = decode_forward_msg(packet)?;
+
+        // TODO: these values should be loaded from storage
+        let processed = false;
+        let disable_denom_composition = true;
+
+        // NB: this is supposed to be set by other middlewares,
+        // but current we have no way of writing to a namespace
+        // shared between all middlewares... unless we impl some
+        // form of message passing (from the current to the next
+        // middleware, as arguments to the event reactor fns)
+        //
+        // let non_refundable = false;
+
+        let override_receiver = get_receiver(&self.next, &metadata.channel, &metadata.receiver)?;
+
+        todo!()
+    }
+}
+
 impl<M> IbcCoreModule for PacketForwardMiddleware<M>
 where
     M: Module + PfmContext,
@@ -91,36 +152,11 @@ where
         packet: &Packet,
         relayer: &Signer,
     ) -> (ModuleExtras, Acknowledgement) {
-        let Ok(_data) = serde_json::from_slice::<PacketData>(&packet.data) else {
-            // NB: if `packet.data` is not a valid fungible token transfer
-            // packet, we forward the call to the next middleware
-            return self.next.on_recv_packet_execute(packet, relayer);
-        };
-
-        /*
-        // newErrorAcknowledgement returns an error that identifies PFM and provides the error.
-        // It's okay if these errors are non-deterministic, because they will not be committed to state, only emitted as events.
-        func newErrorAcknowledgement(err error) channeltypes.Acknowledgement {
-            return channeltypes.Acknowledgement{
-                Response: &channeltypes.Acknowledgement_Error{
-                    Error: fmt.Sprintf("packet-forward-middleware error: %s", err.Error()),
-                },
-            }
-        }
-        */
-
-        let Ok(msg::PacketMetadata { forward: _metadata }) =
-            serde_json::from_slice::<msg::PacketMetadata>(&packet.data)
-        else {
-            todo!("return newErrorAcknowledgement")
-        };
-
-        // TODO: these values should be loaded from storage
-        let processed = false;
-        let non_refundable = true;
-        let disable_denom_composition = true;
-
-        self.next.on_recv_packet_execute(packet, relayer)
+        self._on_recv_packet_execute(packet, relayer)
+            .unwrap_or_else(|middleware_err| match middleware_err {
+                MiddlewareError::Forward => self.next.on_recv_packet_execute(packet, relayer),
+                MiddlewareError::Message(err) => (ModuleExtras::empty(), new_error_ack(err).into()),
+            })
     }
 
     fn on_acknowledgement_packet_validate(
@@ -307,4 +343,53 @@ where
     ) -> Result<ModuleExtras, ChannelError> {
         self.next.on_chan_close_confirm_execute(port_id, channel_id)
     }
+}
+
+#[inline]
+fn new_error_ack(message: impl fmt::Display) -> AcknowledgementStatus {
+    AcknowledgementStatus::error(
+        AckStatusValue::new(format!("{NAMESPACE} error: {message}"))
+            .expect("Acknowledgement error must not be empty"),
+    )
+}
+
+fn receiver_pre_img(channel: &ChannelId, original_sender: &str) -> Vec<u8> {
+    format!("{channel}/{original_sender}").into_bytes()
+}
+
+fn get_receiver<C: PfmContext>(
+    ctx: &C,
+    channel: &ChannelId,
+    original_sender: &str,
+) -> Result<String, MiddlewareError> {
+    let preimg = receiver_pre_img(channel, original_sender);
+    ctx.encode_blob_as_address(&preimg)
+        .map_err(|err| MiddlewareError::Message(err.to_string()))
+}
+
+fn decode_forward_msg(packet: &Packet) -> Result<msg::ForwardMetadata, MiddlewareError> {
+    let Ok(transfer_pkt) = serde_json::from_slice::<PacketData>(&packet.data) else {
+        // NB: if `packet.data` is not a valid fungible token transfer
+        // packet, we forward the call to the next middleware
+        return Err(MiddlewareError::Forward);
+    };
+
+    let Ok(json_obj_memo) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+        transfer_pkt.memo.as_ref(),
+    ) else {
+        // NB: if the ICS-20 packet memo is not a valid JSON object, we forward
+        // this call to the next middleware
+        return Err(MiddlewareError::Forward);
+    };
+
+    if !json_obj_memo.contains_key("forward") {
+        // NB: the memo was a valid json object, but it wasn't up to
+        // the PFM to consume it, so we forward the call to the next middleware
+        return Err(MiddlewareError::Forward);
+    }
+
+    serde_json::from_value(json_obj_memo.into()).map_or_else(
+        |err| Err(MiddlewareError::Message(err.to_string())),
+        |msg::PacketMetadata { forward }| Ok(forward),
+    )
 }
