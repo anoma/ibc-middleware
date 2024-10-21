@@ -30,6 +30,21 @@ impl<'namespace, S> NamespacedStore<'namespace, S> {
     pub const fn new(namespace: &'namespace str, store: S) -> Self {
         Self { namespace, store }
     }
+
+    /// Return the namespace of this [`NamespacedStore`].
+    pub fn namespace(&self) -> &'namespace str {
+        self.namespace
+    }
+
+    /// Return a reference to the inner store.
+    pub fn inner(&self) -> &S {
+        &self.store
+    }
+
+    /// Return a mutable reference to the inner store.
+    pub fn inner_mut(&mut self) -> &S {
+        &mut self.store
+    }
 }
 
 impl<S: Store> Store for NamespacedStore<'_, S> {
