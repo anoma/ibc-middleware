@@ -5,22 +5,37 @@ use core::str::FromStr;
 use ibc_core_host_types::identifiers::{ChannelId, PortId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// Metadata included in ICS-20 packet memos.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct PacketMetadata {
+    /// Packet forward middleware metadata.
     pub forward: ForwardMetadata,
 }
 
+/// Metadata included in ICS-20 packet memos,
+/// related with the packet forwarding middleware.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct ForwardMetadata {
+    /// Receiver account on the destination chain.
     #[serde(deserialize_with = "deserialize_non_empty_str")]
     pub receiver: String,
+    /// Destination port (usually the `transfer` port).
     #[serde(deserialize_with = "deserialize_from_str")]
     pub port: PortId,
+    /// Destination channel.
     #[serde(deserialize_with = "deserialize_from_str")]
     pub channel: ChannelId,
+    /// Packet timeout duration.
+    ///
+    /// Formatted as regular time strings (e.g. `"1m20s"`),
+    /// or nanoseconds (e.g. `12345`).
     pub timeout: Option<Duration>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// The number of retries before a packet is invalidated.
     pub retries: Option<u8>,
+    /// Next hop in the forwarding chain. This is yet
+    /// another [`ForwardMetadata`] structure, along with
+    /// any additional middleware callbacks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<serde_json::Map<String, serde_json::Value>>,
 }
