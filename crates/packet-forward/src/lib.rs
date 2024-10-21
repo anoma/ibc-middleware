@@ -97,6 +97,29 @@ where
             return self.next.on_recv_packet_execute(packet, relayer);
         };
 
+        /*
+        // newErrorAcknowledgement returns an error that identifies PFM and provides the error.
+        // It's okay if these errors are non-deterministic, because they will not be committed to state, only emitted as events.
+        func newErrorAcknowledgement(err error) channeltypes.Acknowledgement {
+            return channeltypes.Acknowledgement{
+                Response: &channeltypes.Acknowledgement_Error{
+                    Error: fmt.Sprintf("packet-forward-middleware error: %s", err.Error()),
+                },
+            }
+        }
+        */
+
+        let Ok(msg::PacketMetadata { forward: _metadata }) =
+            serde_json::from_slice::<msg::PacketMetadata>(&packet.data)
+        else {
+            todo!("return newErrorAcknowledgement")
+        };
+
+        // TODO: these values should be loaded from storage
+        let processed = false;
+        let non_refundable = true;
+        let disable_denom_composition = true;
+
         self.next.on_recv_packet_execute(packet, relayer)
     }
 
