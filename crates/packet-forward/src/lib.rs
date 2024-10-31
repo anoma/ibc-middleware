@@ -24,8 +24,6 @@ use ibc_core_channel_types::Version;
 use ibc_core_host_types::identifiers::{ChannelId, ConnectionId, PortId};
 use ibc_core_router::module::Module as IbcCoreModule;
 use ibc_core_router_types::module::ModuleExtras;
-use ibc_middleware_core::ics26_callbacks::Module;
-use ibc_middleware_core::store::Store;
 use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
 
@@ -93,30 +91,9 @@ pub struct PacketForwardMiddleware<M> {
     next: M,
 }
 
-impl<M> Module for PacketForwardMiddleware<M>
-where
-    M: Module + PfmContext,
-{
-    fn store(&self) -> &dyn Store {
-        self.next.store()
-    }
-
-    fn store_mut(&mut self) -> &mut dyn Store {
-        self.next.store_mut()
-    }
-
-    fn upcast_to_core(&self) -> &dyn IbcCoreModule {
-        self
-    }
-
-    fn upcast_to_core_mut(&mut self) -> &mut dyn IbcCoreModule {
-        self
-    }
-}
-
 impl<M> PacketForwardMiddleware<M>
 where
-    M: Module + PfmContext,
+    M: PfmContext,
 {
     fn _on_recv_packet_execute(
         &mut self,
@@ -145,7 +122,7 @@ where
 
 impl<M> IbcCoreModule for PacketForwardMiddleware<M>
 where
-    M: Module + PfmContext,
+    M: IbcCoreModule + PfmContext,
 {
     fn on_recv_packet_execute(
         &mut self,
