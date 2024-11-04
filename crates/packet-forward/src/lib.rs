@@ -13,6 +13,7 @@ use core::fmt;
 use ibc_app_transfer::context::{TokenTransferExecutionContext, TokenTransferValidationContext};
 use ibc_app_transfer::handler::{send_transfer_execute, send_transfer_validate};
 use ibc_app_transfer_types::packet::PacketData;
+use ibc_app_transfer_types::{Coin, PrefixedDenom, TracePrefix};
 use ibc_core_channel::context::{SendPacketExecutionContext, SendPacketValidationContext};
 use ibc_core_channel_types::acknowledgement::{
     Acknowledgement, AcknowledgementStatus, StatusValue as AckStatusValue,
@@ -38,6 +39,15 @@ enum MiddlewareError {
 
 /// Module name of the PFM.
 const MODULE: &str = "packet-forward-middleware";
+
+/// Default packet forward timeout duration.
+const DEFAULT_FORWARD_TIMEOUT: msg::Duration = {
+    const DURATION_IN_SECS: u128 = 5 * 60;
+    msg::Duration::from_dur(dur::Duration::from_secs(DURATION_IN_SECS))
+};
+
+/// Default packet forward retries on failure.
+const DEFAULT_FORWARD_RETRIES: u8 = 1;
 
 /// Context data required by the [`PacketForwardMiddleware`].
 pub trait PfmContext {
@@ -73,10 +83,10 @@ pub trait PfmContext {
     fn encode_blob_as_address(&self, data: &[u8]) -> Result<Signer, Self::Error>;
 
     /// Whether ICS-20 packet refunding is disabled.
-    fn non_refundable(&self) -> bool;
+    fn non_refundable(&self) -> Result<bool, Self::Error>;
 
     /// Whether denom composition is disabled.
-    fn disable_denom_composition(&self) -> bool;
+    fn disable_denom_composition(&self) -> Result<bool, Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -90,12 +100,16 @@ impl<M> PacketForwardMiddleware<M>
 where
     M: IbcCoreModule + PfmContext,
 {
+    fn forward_transfer_packet(&mut self) -> Result<ModuleExtras, MiddlewareError> {
+        Ok(ModuleExtras::empty())
+    }
+
     fn receive_funds(
         &mut self,
         source_packet: &Packet,
         source_transfer_pkt: PacketData,
         override_receiver: Signer,
-        signer: &Signer,
+        relayer: &Signer,
     ) -> Result<(), MiddlewareError> {
         let override_packet = {
             let ics20_packet_data = PacketData {
@@ -105,7 +119,7 @@ where
             };
 
             let encoded_packet_data = serde_json::to_vec(&ics20_packet_data).map_err(|err| {
-                MiddlewareError::Message(format!("failed to encode ICS-20 packet: {err}"))
+                MiddlewareError::Message(format!("Failed to encode ICS-20 packet: {err}"))
             })?;
 
             Packet {
@@ -114,20 +128,20 @@ where
             }
         };
 
-        let (extras, maybe_ack) = self.next.on_recv_packet_execute(&override_packet, signer);
+        let (extras, maybe_ack) = self.next.on_recv_packet_execute(&override_packet, relayer);
 
         let Some(ack) = maybe_ack else {
             return Err(MiddlewareError::MessageWithExtras(
                 extras,
-                "ack is nil".to_owned(),
+                "Ack is nil".to_owned(),
             ));
         };
 
         let ack: AcknowledgementStatus = serde_json::from_slice(ack.as_bytes())
-            .map_err(|err| MiddlewareError::Message(format!("failed to parse ack: {err}")))?;
+            .map_err(|err| MiddlewareError::Message(format!("Failed to parse ack: {err}")))?;
 
         if !ack.is_successful() {
-            return Err(MiddlewareError::Message(format!("ack error: {ack}")));
+            return Err(MiddlewareError::Message(format!("Ack error: {ack}")));
         }
 
         Ok(())
@@ -140,22 +154,33 @@ where
     ) -> Result<ModuleExtras, MiddlewareError> {
         let (transfer_pkt, metadata) = decode_forward_msg(packet)?;
 
-        // TODO: these values should be loaded from storage
-        let processed = false;
-        let disable_denom_composition = true;
-
-        // NB: this is supposed to be set by other middlewares,
-        // but current we have no way of writing to a namespace
-        // shared between all middlewares... unless we impl some
-        // form of message passing (from the current to the next
-        // middleware, as arguments to the event reactor fns)
-        //
-        // let non_refundable = false;
-
         // override the receiver so that senders cannot move funds through arbitrary addresses
         let override_receiver = get_receiver(&self.next, &metadata.channel, &metadata.receiver)?;
 
-        todo!()
+        self.receive_funds(packet, transfer_pkt.clone(), override_receiver, relayer)?;
+
+        let mut coin = transfer_pkt.token.clone();
+
+        if !self.next.disable_denom_composition().map_err(|err| {
+            MiddlewareError::Message(format!(
+                "Failed to check if denom composition is disabled: {err}"
+            ))
+        })? {
+            coin.denom.trace_path.remove_prefix(&TracePrefix::new(
+                packet.port_id_on_b.clone(),
+                packet.chan_id_on_b.clone(),
+            ));
+        }
+
+        let timeout = metadata.timeout.unwrap_or(DEFAULT_FORWARD_TIMEOUT);
+        let retries = metadata.retries.unwrap_or(DEFAULT_FORWARD_RETRIES);
+        let non_refundable = self.next.non_refundable().map_err(|err| {
+            MiddlewareError::Message(format!(
+                "Failed to check if the forward packet cannot be refunded: {err}"
+            ))
+        })?;
+
+        self.forward_transfer_packet()
     }
 }
 
@@ -388,7 +413,7 @@ fn get_receiver<C: PfmContext>(
 ) -> Result<Signer, MiddlewareError> {
     let preimg = receiver_pre_img(channel, original_sender);
     ctx.encode_blob_as_address(&preimg)
-        .map_err(|err| MiddlewareError::Message(err.to_string()))
+        .map_err(|err| MiddlewareError::Message(format!("Failed to get override receiver: {err}")))
 }
 
 fn decode_forward_msg(
