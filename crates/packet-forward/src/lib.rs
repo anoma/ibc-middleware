@@ -82,10 +82,14 @@ pub trait PfmContext {
     /// to the source chain.
     fn encode_blob_as_address(&self, data: &[u8]) -> Result<Signer, Self::Error>;
 
-    /// Whether ICS-20 packet refunding is disabled.
+    /// Whether ICS-20 packet refunding is disabled. Generally,
+    /// this method should return `Ok(false)`, unless you know
+    /// what you are doing.
     fn non_refundable(&self) -> Result<bool, Self::Error>;
 
-    /// Whether denom composition is disabled.
+    /// Whether denom composition is disabled. Generally, this
+    /// method should return `Ok(false)`, unless you know what
+    /// you are doing.
     fn disable_denom_composition(&self) -> Result<bool, Self::Error>;
 }
 
@@ -160,12 +164,16 @@ where
         self.receive_funds(packet, transfer_pkt.clone(), override_receiver, relayer)?;
 
         let mut coin = transfer_pkt.token.clone();
-
-        if !self.next.disable_denom_composition().map_err(|err| {
+        let disable_denom_composition = self.next.disable_denom_composition().map_err(|err| {
             MiddlewareError::Message(format!(
                 "Failed to check if denom composition is disabled: {err}"
             ))
-        })? {
+        })?;
+
+        if !disable_denom_composition {
+            // NB: Suppose the following packet flow `A => B => C`,
+            // on chains A, B, and C. If we are the first hop (i.e. B),
+            // then we must unwrap the denom.
             coin.denom.trace_path.remove_prefix(&TracePrefix::new(
                 packet.port_id_on_b.clone(),
                 packet.chan_id_on_b.clone(),
