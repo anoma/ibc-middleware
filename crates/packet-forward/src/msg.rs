@@ -35,7 +35,8 @@ pub struct InFlightPacket {
     /// Number of retries remaining before the
     /// packet is refunded.
     pub retries_remaining: NonZeroU8,
-    /// Timeout duration.
+    /// Timeout duration, relative to some
+    /// instant (usually a block timestamp).
     pub timeout: Duration,
 }
 
