@@ -12,6 +12,7 @@ use core::fmt;
 
 use ibc_app_transfer::context::{TokenTransferExecutionContext, TokenTransferValidationContext};
 use ibc_app_transfer::handler::{send_transfer_execute, send_transfer_validate};
+use ibc_app_transfer::types::msgs::transfer::MsgTransfer;
 use ibc_app_transfer_types::packet::PacketData;
 use ibc_app_transfer_types::{Coin, PrefixedDenom, TracePrefix};
 use ibc_core_channel::context::{SendPacketExecutionContext, SendPacketValidationContext};
@@ -21,6 +22,7 @@ use ibc_core_channel_types::acknowledgement::{
 use ibc_core_channel_types::channel::{Counterparty, Order};
 use ibc_core_channel_types::error::{ChannelError, PacketError};
 use ibc_core_channel_types::packet::Packet;
+use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
 use ibc_core_channel_types::Version;
 use ibc_core_host_types::identifiers::{ChannelId, ConnectionId, PortId};
 use ibc_core_router::module::Module as IbcCoreModule;
@@ -41,9 +43,9 @@ enum MiddlewareError {
 const MODULE: &str = "packet-forward-middleware";
 
 /// Default packet forward timeout duration.
-const DEFAULT_FORWARD_TIMEOUT: msg::Duration = {
+const DEFAULT_FORWARD_TIMEOUT: dur::Duration = {
     const DURATION_IN_SECS: u128 = 5 * 60;
-    msg::Duration::from_dur(dur::Duration::from_secs(DURATION_IN_SECS))
+    dur::Duration::from_secs(DURATION_IN_SECS)
 };
 
 /// Default packet forward retries on failure.
@@ -78,19 +80,24 @@ pub trait PfmContext {
     /// Return a [`TokenTransferValidationContext`] impl.
     fn token_transfer_validation_ctx(&self) -> &Self::TokenTransferValidationContext;
 
-    /// Given some arbitrary data blob, return an address native
-    /// to the source chain.
-    fn encode_blob_as_address(&self, data: &[u8]) -> Result<Signer, Self::Error>;
+    /// Get an escrow account that will receive funds to be forwarded through
+    /// channel `channel`.
+    ///
+    /// The account should not be controllable by `original_sender`, but the
+    /// Packet Forward Middleware should be able to freely deposit and withdraw
+    /// funds from it.
+    fn get_override_receiver(
+        &self,
+        channel: &ChannelId,
+        original_sender: &Signer,
+    ) -> Result<Signer, Self::Error>;
 
-    /// Whether ICS-20 packet refunding is disabled. Generally,
-    /// this method should return `Ok(false)`, unless you know
-    /// what you are doing.
-    fn non_refundable(&self) -> Result<bool, Self::Error>;
-
-    /// Whether denom composition is disabled. Generally, this
-    /// method should return `Ok(false)`, unless you know what
-    /// you are doing.
-    fn disable_denom_composition(&self) -> Result<bool, Self::Error>;
+    /// Given a timeout duration, return a [`TimeoutTimestamp`], to be
+    /// applied to some hop.
+    fn timeout_timestamp(
+        &self,
+        timeout_duration: dur::Duration,
+    ) -> Result<TimeoutTimestamp, Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -104,7 +111,74 @@ impl<M> PacketForwardMiddleware<M>
 where
     M: IbcCoreModule + PfmContext,
 {
-    fn forward_transfer_packet(&mut self) -> Result<ModuleExtras, MiddlewareError> {
+    fn get_denom_for_this_chain(
+        &self,
+        source_packet: &Packet,
+        source_coin: &Coin<PrefixedDenom>,
+    ) -> Result<Coin<PrefixedDenom>, MiddlewareError> {
+        let mut coin = source_coin.clone();
+
+        // NB: Suppose the following packet flow `A => B => C`,
+        // on chains A, B, and C. If we are the first hop (i.e. B),
+        // then we must unwrap the denom.
+        coin.denom.trace_path.remove_prefix(&TracePrefix::new(
+            source_packet.port_id_on_b.clone(),
+            source_packet.chan_id_on_b.clone(),
+        ));
+
+        Ok(coin)
+    }
+
+    fn forward_transfer_packet(
+        &mut self,
+        inflight_packet: Option<msg::InFlightPacket>,
+        fwd_metadata: msg::ForwardMetadata,
+        original_sender: Signer,
+        override_receiver: Signer,
+        token_and_amount: Coin<PrefixedDenom>,
+    ) -> Result<ModuleExtras, MiddlewareError> {
+        let timeout = fwd_metadata
+            .timeout
+            .map_or(DEFAULT_FORWARD_TIMEOUT, |msg::Duration(d)| d);
+        let retries = fwd_metadata.retries.unwrap_or(DEFAULT_FORWARD_RETRIES);
+
+        let next_memo = fwd_metadata
+            .next
+            .as_ref()
+            .map(|next| {
+                serde_json::to_string(next).map_err(|err| {
+                    MiddlewareError::Message(format!("Failed to encode next memo: {err}"))
+                })
+            })
+            .transpose()?
+            .unwrap_or_default()
+            .into();
+
+        let fwd_msg_transfer = MsgTransfer {
+            port_id_on_a: fwd_metadata.port,
+            chan_id_on_a: fwd_metadata.channel,
+            timeout_height_on_b: TimeoutHeight::Never,
+            timeout_timestamp_on_b: self.next.timeout_timestamp(timeout).map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to get timeout timestamp for fwd msg transfer: {err}"
+                ))
+            })?,
+            packet_data: PacketData {
+                sender: override_receiver,
+                receiver: fwd_metadata.receiver,
+                token: token_and_amount,
+                memo: next_memo,
+            },
+        };
+
+        send_transfer_execute::<M::SendPacketExecutionContext, M::TokenTransferExecutionContext>(
+            self.next.send_packet_execution_ctx(),
+            // self.next.token_transfer_execution_ctx(),
+            todo!(),
+            fwd_msg_transfer,
+        )
+        .map_err(|err| MiddlewareError::Message(format!("Failed to send forward packet: {err}")))?;
+
         Ok(ModuleExtras::empty())
     }
 
@@ -156,39 +230,21 @@ where
         packet: &Packet,
         relayer: &Signer,
     ) -> Result<ModuleExtras, MiddlewareError> {
-        let (transfer_pkt, metadata) = decode_forward_msg(packet)?;
+        let (transfer_pkt, fwd_metadata) = decode_forward_msg(packet)?;
 
-        // override the receiver so that senders cannot move funds through arbitrary addresses
-        let override_receiver = get_receiver(&self.next, &metadata.channel, &metadata.receiver)?;
+        let override_receiver =
+            get_receiver(&self.next, &fwd_metadata.channel, &transfer_pkt.sender)?;
+        let target_coin = self.get_denom_for_this_chain(packet, &transfer_pkt.token)?;
+        let original_sender = transfer_pkt.sender.clone();
 
-        self.receive_funds(packet, transfer_pkt.clone(), override_receiver, relayer)?;
-
-        let mut coin = transfer_pkt.token.clone();
-        let disable_denom_composition = self.next.disable_denom_composition().map_err(|err| {
-            MiddlewareError::Message(format!(
-                "Failed to check if denom composition is disabled: {err}"
-            ))
-        })?;
-
-        if !disable_denom_composition {
-            // NB: Suppose the following packet flow `A => B => C`,
-            // on chains A, B, and C. If we are the first hop (i.e. B),
-            // then we must unwrap the denom.
-            coin.denom.trace_path.remove_prefix(&TracePrefix::new(
-                packet.port_id_on_b.clone(),
-                packet.chan_id_on_b.clone(),
-            ));
-        }
-
-        let timeout = metadata.timeout.unwrap_or(DEFAULT_FORWARD_TIMEOUT);
-        let retries = metadata.retries.unwrap_or(DEFAULT_FORWARD_RETRIES);
-        let non_refundable = self.next.non_refundable().map_err(|err| {
-            MiddlewareError::Message(format!(
-                "Failed to check if the forward packet cannot be refunded: {err}"
-            ))
-        })?;
-
-        self.forward_transfer_packet()
+        self.receive_funds(packet, transfer_pkt, override_receiver.clone(), relayer)?;
+        self.forward_transfer_packet(
+            None,
+            fwd_metadata,
+            original_sender,
+            override_receiver,
+            target_coin,
+        )
     }
 }
 
@@ -410,17 +466,12 @@ fn new_error_ack(message: impl fmt::Display) -> AcknowledgementStatus {
     )
 }
 
-fn receiver_pre_img(channel: &ChannelId, original_sender: &str) -> Vec<u8> {
-    format!("{channel}/{original_sender}").into_bytes()
-}
-
 fn get_receiver<C: PfmContext>(
     ctx: &C,
     channel: &ChannelId,
-    original_sender: &str,
+    original_sender: &Signer,
 ) -> Result<Signer, MiddlewareError> {
-    let preimg = receiver_pre_img(channel, original_sender);
-    ctx.encode_blob_as_address(&preimg)
+    ctx.get_override_receiver(channel, original_sender)
         .map_err(|err| MiddlewareError::Message(format!("Failed to get override receiver: {err}")))
 }
 

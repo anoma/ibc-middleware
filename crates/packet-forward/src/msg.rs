@@ -2,8 +2,41 @@ use alloc::string::{String, ToString};
 use core::fmt;
 use core::str::FromStr;
 
-use ibc_core_host_types::identifiers::{ChannelId, PortId};
+use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
+use ibc_core_host_types::identifiers::{ChannelId, PortId, Sequence};
+use ibc_primitives::Signer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+/// Packet that is currently being transmitted to a destination
+/// chain over multiple hops.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
+pub struct InFlightPacket {
+    /// Sender of the packet on the source chain.
+    pub original_sender_address: Signer,
+    /// Port where the packet was received in the
+    /// current chain.
+    pub refund_port_id: PortId,
+    /// Channel where the packet was received in the
+    /// current chain.
+    pub refund_channel_id: ChannelId,
+    /// Port on the sending chain.
+    pub packet_src_port_id: PortId,
+    /// Channel on the sending chain.
+    pub packet_src_channel_id: ChannelId,
+    /// Timeout timestamp of the original packet.
+    pub packet_timeout_timestamp: TimeoutTimestamp,
+    /// Timeout height of the original packet.
+    pub packet_timeout_height: TimeoutHeight,
+    /// Data of the source packet.
+    pub packet_data: Vec<u8>,
+    /// Sequence number of the source packet.
+    pub refund_sequence: Sequence,
+    /// Number of retries remaining before the
+    /// packet is refunded.
+    pub retries_remaining: u8,
+    /// Timeout duration.
+    pub timeout: Duration,
+}
 
 /// Metadata included in ICS-20 packet memos.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
@@ -17,8 +50,8 @@ pub struct PacketMetadata {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
 pub struct ForwardMetadata {
     /// Receiver account on the destination chain.
-    #[serde(deserialize_with = "deserialize_non_empty_str")]
-    pub receiver: String,
+    #[serde(deserialize_with = "deserialize_non_empty_signer")]
+    pub receiver: Signer,
     /// Destination port (usually the `transfer` port).
     #[serde(deserialize_with = "deserialize_from_str")]
     pub port: PortId,
@@ -40,13 +73,13 @@ pub struct ForwardMetadata {
     pub next: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-fn deserialize_non_empty_str<'de, D>(deserializer: D) -> Result<String, D::Error>
+fn deserialize_non_empty_signer<'de, D>(deserializer: D) -> Result<Signer, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
     if !s.is_empty() {
-        Ok(s)
+        Ok(s.into())
     } else {
         Err(serde::de::Error::custom(
             "IBC forward receiver cannot be empty",
@@ -173,7 +206,9 @@ mod tests {
                 "#,
                 expected: Ok(PacketMetadata {
                     forward: ForwardMetadata {
-                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                            .to_owned()
+                            .into(),
                         port: PortId::transfer(),
                         channel: ChannelId::new(1180),
                         timeout: None,
@@ -194,7 +229,9 @@ mod tests {
                 "#,
                 expected: Ok(PacketMetadata {
                     forward: ForwardMetadata {
-                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                            .to_owned()
+                            .into(),
                         port: PortId::transfer(),
                         channel: ChannelId::new(1180),
                         timeout: None,
@@ -222,7 +259,9 @@ mod tests {
                 "#,
                 expected: Ok(PacketMetadata {
                     forward: ForwardMetadata {
-                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                            .to_owned()
+                            .into(),
                         port: PortId::transfer(),
                         channel: ChannelId::new(1180),
                         timeout: None,
@@ -298,7 +337,9 @@ mod tests {
                 "#,
                 expected: Ok(PacketMetadata {
                     forward: ForwardMetadata {
-                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt".to_owned(),
+                        receiver: "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt"
+                            .to_owned()
+                            .into(),
                         port: PortId::transfer(),
                         channel: ChannelId::new(1180),
                         timeout: Some(Duration(dur::Duration::from_secs(80))),
