@@ -92,6 +92,13 @@ pub struct PacketForwardMiddleware<M> {
     next: M,
 }
 
+impl<M> PacketForwardMiddleware<M> {
+    /// Wrap an existing middleware in the PFM.
+    pub const fn next(next: M) -> Self {
+        Self { next }
+    }
+}
+
 impl<M> PacketForwardMiddleware<M>
 where
     M: IbcCoreModule + PfmContext,
