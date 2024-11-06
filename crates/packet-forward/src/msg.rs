@@ -1,4 +1,5 @@
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use core::fmt;
 use core::num::NonZeroU8;
 use core::str::FromStr;

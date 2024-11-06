@@ -1,5 +1,4 @@
-//! Rust implementation of the IBC packet forwarding middleware,
-//! using [`ibc_middleware_core`].
+//! Rust implementation of the IBC packet forwarding middleware.
 
 #![cfg_attr(not(test), no_std)]
 
@@ -28,6 +27,9 @@ use ibc_core_router_types::event::{ModuleEvent, ModuleEventAttribute};
 use ibc_core_router_types::module::ModuleExtras;
 use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
+
+#[doc(inline)]
+pub use self::msg::{Duration, InFlightPacket};
 
 enum MiddlewareError {
     /// Error message with module extras.
@@ -77,12 +79,10 @@ pub trait PfmContext {
         timeout_duration: dur::Duration,
     ) -> Result<TimeoutTimestamp, Self::Error>;
 
-    /// Stores an [in-flight packet](msg::InFlightPacket) (i.e. a packet
+    /// Stores an [in-flight packet](InFlightPacket) (i.e. a packet
     /// that is currently being transmitted over multiple hops by the PFM).
-    fn store_inflight_packet(
-        &mut self,
-        inflight_packet: msg::InFlightPacket,
-    ) -> Result<(), Self::Error>;
+    fn store_inflight_packet(&mut self, inflight_packet: InFlightPacket)
+        -> Result<(), Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -116,7 +116,7 @@ where
 
     fn forward_transfer_packet(
         &mut self,
-        inflight_packet: Option<msg::InFlightPacket>,
+        inflight_packet: Option<InFlightPacket>,
         src_packet: &Packet,
         fwd_metadata: msg::ForwardMetadata,
         original_sender: Signer,
@@ -565,12 +565,12 @@ fn join_module_extras(mut first: ModuleExtras, mut second: ModuleExtras) -> Modu
 }
 
 fn retrieve_inflight_packet(
-    inflight_packet: Option<msg::InFlightPacket>,
+    inflight_packet: Option<InFlightPacket>,
     original_sender: Signer,
     src_packet: &Packet,
     retries: NonZeroU8,
     timeout: dur::Duration,
-) -> msg::InFlightPacket {
+) -> InFlightPacket {
     if let Some(pkt) = inflight_packet {
         let retries_remaining = {
             debug_assert!(pkt.retries_remaining.get() > 0);
@@ -579,12 +579,12 @@ fn retrieve_inflight_packet(
                 .expect("Number of retries was asserted to be greater than zero")
         };
 
-        msg::InFlightPacket {
+        InFlightPacket {
             retries_remaining,
             ..pkt
         }
     } else {
-        msg::InFlightPacket {
+        InFlightPacket {
             original_sender_address: original_sender,
             refund_port_id: src_packet.port_id_on_b.clone(),
             refund_channel_id: src_packet.chan_id_on_b.clone(),
