@@ -9,6 +9,7 @@ mod msg;
 
 use alloc::format;
 use core::fmt;
+use core::num::NonZeroU8;
 
 use ibc_app_transfer_types::msgs::transfer::MsgTransfer;
 use ibc_app_transfer_types::packet::PacketData;
@@ -46,7 +47,7 @@ const DEFAULT_FORWARD_TIMEOUT: dur::Duration = {
 };
 
 /// Default packet forward retries on failure.
-const DEFAULT_FORWARD_RETRIES: u8 = 1;
+const DEFAULT_FORWARD_RETRIES: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(1) };
 
 /// Context data required by the [`PacketForwardMiddleware`].
 pub trait PfmContext {
@@ -77,6 +78,13 @@ pub trait PfmContext {
         &self,
         timeout_duration: dur::Duration,
     ) -> Result<TimeoutTimestamp, Self::Error>;
+
+    /// Stores an [in-flight packet](msg::InFlightPacket) (i.e. a packet
+    /// that is currently being transmitted over multiple hops by the PFM).
+    fn store_inflight_packet(
+        &mut self,
+        inflight_packet: msg::InFlightPacket,
+    ) -> Result<(), Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -111,6 +119,7 @@ where
     fn forward_transfer_packet(
         &mut self,
         inflight_packet: Option<msg::InFlightPacket>,
+        src_packet: &Packet,
         fwd_metadata: msg::ForwardMetadata,
         original_sender: Signer,
         override_receiver: Signer,
@@ -156,6 +165,18 @@ where
                 MiddlewareError::Message(format!("Failed to send forward packet: {err}"))
             })?;
 
+        self.next
+            .store_inflight_packet(retrieve_inflight_packet(
+                inflight_packet,
+                original_sender,
+                src_packet,
+                retries,
+                timeout,
+            ))
+            .map_err(|err| {
+                MiddlewareError::Message(format!("Failed to store in-flight packet: {err}"))
+            })?;
+
         Ok(ModuleExtras::empty())
     }
 
@@ -165,7 +186,7 @@ where
         source_transfer_pkt: PacketData,
         override_receiver: Signer,
         relayer: &Signer,
-    ) -> Result<(), MiddlewareError> {
+    ) -> Result<ModuleExtras, MiddlewareError> {
         let override_packet = {
             let ics20_packet_data = PacketData {
                 receiver: override_receiver,
@@ -199,8 +220,7 @@ where
             return Err(MiddlewareError::Message(format!("Ack error: {ack}")));
         }
 
-        // TODO: return extras??
-        Ok(())
+        Ok(extras)
     }
 
     fn on_recv_packet_execute_inner(
@@ -215,14 +235,21 @@ where
         let target_coin = self.get_denom_for_this_chain(packet, &transfer_pkt.token)?;
         let original_sender = transfer_pkt.sender.clone();
 
-        self.receive_funds(packet, transfer_pkt, override_receiver.clone(), relayer)?;
-        self.forward_transfer_packet(
+        let receive_funds_extras =
+            self.receive_funds(packet, transfer_pkt, override_receiver.clone(), relayer)?;
+        let forward_transfer_packet_extras = self.forward_transfer_packet(
             None,
+            packet,
             fwd_metadata,
             original_sender,
             override_receiver,
             target_coin,
-        )
+        )?;
+
+        Ok(join_module_extras(
+            receive_funds_extras,
+            forward_transfer_packet_extras,
+        ))
     }
 }
 
@@ -482,9 +509,44 @@ fn decode_forward_msg(
     )
 }
 
-#[allow(dead_code)]
 fn join_module_extras(mut first: ModuleExtras, mut second: ModuleExtras) -> ModuleExtras {
     first.events.append(&mut second.events);
     first.log.append(&mut second.log);
     first
+}
+
+fn retrieve_inflight_packet(
+    inflight_packet: Option<msg::InFlightPacket>,
+    original_sender: Signer,
+    src_packet: &Packet,
+    retries: NonZeroU8,
+    timeout: dur::Duration,
+) -> msg::InFlightPacket {
+    if let Some(pkt) = inflight_packet {
+        let retries_remaining = {
+            debug_assert!(pkt.retries_remaining.get() > 0);
+
+            NonZeroU8::new(pkt.retries_remaining.get().wrapping_sub(1))
+                .expect("Number of retries was asserted to be greater than zero")
+        };
+
+        msg::InFlightPacket {
+            retries_remaining,
+            ..pkt
+        }
+    } else {
+        msg::InFlightPacket {
+            original_sender_address: original_sender,
+            refund_port_id: src_packet.port_id_on_b.clone(),
+            refund_channel_id: src_packet.chan_id_on_b.clone(),
+            packet_src_port_id: src_packet.port_id_on_a.clone(),
+            packet_src_channel_id: src_packet.chan_id_on_a.clone(),
+            packet_timeout_timestamp: src_packet.timeout_timestamp_on_b,
+            packet_timeout_height: src_packet.timeout_height_on_b,
+            packet_data: src_packet.data.clone(),
+            refund_sequence: src_packet.seq_on_a,
+            retries_remaining: retries,
+            timeout: msg::Duration::from_dur(timeout),
+        }
+    }
 }

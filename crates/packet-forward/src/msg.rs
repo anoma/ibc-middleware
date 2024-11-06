@@ -1,5 +1,6 @@
 use alloc::string::{String, ToString};
 use core::fmt;
+use core::num::NonZeroU8;
 use core::str::FromStr;
 
 use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
@@ -33,7 +34,7 @@ pub struct InFlightPacket {
     pub refund_sequence: Sequence,
     /// Number of retries remaining before the
     /// packet is refunded.
-    pub retries_remaining: u8,
+    pub retries_remaining: NonZeroU8,
     /// Timeout duration.
     pub timeout: Duration,
 }
@@ -65,7 +66,7 @@ pub struct ForwardMetadata {
     pub timeout: Option<Duration>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// The number of retries before a packet is invalidated.
-    pub retries: Option<u8>,
+    pub retries: Option<NonZeroU8>,
     /// Next hop in the forwarding chain. This is yet
     /// another [`ForwardMetadata`] structure, along with
     /// any additional middleware callbacks.
@@ -141,6 +142,13 @@ mod duration {
                 AllDuration::Dur(DurrDerp(dur)) => Self(dur),
                 AllDuration::F64(F64Dur(DurrDerp(dur))) => Self(dur),
             }
+        }
+    }
+
+    impl Duration {
+        /// Initialize a new [`Duration`].
+        pub const fn from_dur(dur: dur::Duration) -> Self {
+            Self(dur)
         }
     }
 
