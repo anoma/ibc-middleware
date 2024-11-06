@@ -49,7 +49,3 @@ rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
 [workspace.dependencies.ibc-app-transfer-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
 rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
-
-[workspace.dependencies.ibc-app-transfer]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"

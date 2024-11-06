@@ -438,16 +438,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "ibc-app-transfer"
-version = "0.54.0"
-source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=42826d74f47959a4e9a000f90ff6ae569415ea48#42826d74f47959a4e9a000f90ff6ae569415ea48"
-dependencies = [
- "ibc-app-transfer-types",
- "ibc-core",
- "serde-json-wasm",
-]
-
-[[package]]
 name = "ibc-app-transfer-types"
 version = "0.54.0"
 source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=42826d74f47959a4e9a000f90ff6ae569415ea48#42826d74f47959a4e9a000f90ff6ae569415ea48"
@@ -723,7 +713,6 @@ name = "ibc-middleware-packet-forward"
 version = "0.1.0"
 dependencies = [
  "dur",
- "ibc-app-transfer",
  "ibc-app-transfer-types",
  "ibc-core-channel",
  "ibc-core-channel-types",
@@ -1214,15 +1203,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8e3592472072e6e22e0a54d5904d9febf8508f65fb8552499a1abc7d1078c3a"
 dependencies = [
  "serde_derive",
-]
-
-[[package]]
-name = "serde-json-wasm"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f05da0d153dd4595bdffd5099dc0e9ce425b205ee648eb93437ff7302af8c9a5"
-dependencies = [
- "serde",
 ]
 
 [[package]]

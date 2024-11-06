@@ -10,12 +10,9 @@ mod msg;
 use alloc::format;
 use core::fmt;
 
-use ibc_app_transfer::context::{TokenTransferExecutionContext, TokenTransferValidationContext};
-use ibc_app_transfer::handler::{send_transfer_execute, send_transfer_validate};
-use ibc_app_transfer::types::msgs::transfer::MsgTransfer;
+use ibc_app_transfer_types::msgs::transfer::MsgTransfer;
 use ibc_app_transfer_types::packet::PacketData;
 use ibc_app_transfer_types::{Coin, PrefixedDenom, TracePrefix};
-use ibc_core_channel::context::{SendPacketExecutionContext, SendPacketValidationContext};
 use ibc_core_channel_types::acknowledgement::{
     Acknowledgement, AcknowledgementStatus, StatusValue as AckStatusValue,
 };
@@ -53,32 +50,14 @@ const DEFAULT_FORWARD_RETRIES: u8 = 1;
 
 /// Context data required by the [`PacketForwardMiddleware`].
 pub trait PfmContext {
-    /// Context required by [`send_transfer_execute`].
-    type SendPacketExecutionContext: SendPacketExecutionContext;
-
-    /// Context required by [`send_transfer_validate`].
-    type SendPacketValidationContext: SendPacketValidationContext;
-
-    /// Context required by [`send_transfer_execute`].
-    type TokenTransferExecutionContext: TokenTransferExecutionContext;
-
-    /// Context required by [`send_transfer_validate`].
-    type TokenTransferValidationContext: TokenTransferValidationContext;
-
     /// Error returned by fallible operations.
     type Error: fmt::Display;
 
-    /// Return a [`SendPacketExecutionContext`] impl.
-    fn send_packet_execution_ctx(&mut self) -> &mut Self::SendPacketExecutionContext;
+    /// Validate an ICS-20 transfer.
+    fn send_transfer_validate(&self, msg: MsgTransfer) -> Result<(), Self::Error>;
 
-    /// Return a [`SendPacketValidationContext`] impl.
-    fn send_packet_validation_ctx(&self) -> &Self::SendPacketValidationContext;
-
-    /// Return a [`TokenTransferExecutionContext`] impl.
-    fn token_transfer_execution_ctx(&mut self) -> &mut Self::TokenTransferExecutionContext;
-
-    /// Return a [`TokenTransferValidationContext`] impl.
-    fn token_transfer_validation_ctx(&self) -> &Self::TokenTransferValidationContext;
+    /// Execute an ICS-20 transfer.
+    fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<(), Self::Error>;
 
     /// Get an escrow account that will receive funds to be forwarded through
     /// channel `channel`.
@@ -86,7 +65,7 @@ pub trait PfmContext {
     /// The account should not be controllable by `original_sender`, but the
     /// Packet Forward Middleware should be able to freely deposit and withdraw
     /// funds from it.
-    fn get_override_receiver(
+    fn override_receiver(
         &self,
         channel: &ChannelId,
         original_sender: &Signer,
@@ -171,13 +150,11 @@ where
             },
         };
 
-        send_transfer_execute::<M::SendPacketExecutionContext, M::TokenTransferExecutionContext>(
-            self.next.send_packet_execution_ctx(),
-            // self.next.token_transfer_execution_ctx(),
-            todo!(),
-            fwd_msg_transfer,
-        )
-        .map_err(|err| MiddlewareError::Message(format!("Failed to send forward packet: {err}")))?;
+        self.next
+            .send_transfer_execute(fwd_msg_transfer)
+            .map_err(|err| {
+                MiddlewareError::Message(format!("Failed to send forward packet: {err}"))
+            })?;
 
         Ok(ModuleExtras::empty())
     }
@@ -222,6 +199,7 @@ where
             return Err(MiddlewareError::Message(format!("Ack error: {ack}")));
         }
 
+        // TODO: return extras??
         Ok(())
     }
 
@@ -471,7 +449,7 @@ fn get_receiver<C: PfmContext>(
     channel: &ChannelId,
     original_sender: &Signer,
 ) -> Result<Signer, MiddlewareError> {
-    ctx.get_override_receiver(channel, original_sender)
+    ctx.override_receiver(channel, original_sender)
         .map_err(|err| MiddlewareError::Message(format!("Failed to get override receiver: {err}")))
 }
 

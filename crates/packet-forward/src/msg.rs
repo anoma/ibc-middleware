@@ -144,13 +144,6 @@ mod duration {
         }
     }
 
-    impl Duration {
-        /// Initialize a new [`Duration`].
-        pub const fn from_dur(dur: dur::Duration) -> Self {
-            Self(dur)
-        }
-    }
-
     /// Duration type whose serialization routines are compatible with Strange Love's
     /// PFM JSON forward messages.
     #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
