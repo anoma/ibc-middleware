@@ -213,14 +213,17 @@ where
             ));
         };
 
-        let ack: AcknowledgementStatus = serde_json::from_slice(ack.as_bytes())
-            .map_err(|err| MiddlewareError::Message(format!("Failed to parse ack: {err}")))?;
-
-        if !ack.is_successful() {
-            return Err(MiddlewareError::Message(format!("Ack error: {ack}")));
+        match serde_json::from_slice::<AcknowledgementStatus>(ack.as_bytes()) {
+            Ok(ack) if !ack.is_successful() => Err(MiddlewareError::MessageWithExtras(
+                extras,
+                format!("Ack error: {ack}"),
+            )),
+            Ok(_) => Ok(extras),
+            Err(err) => Err(MiddlewareError::MessageWithExtras(
+                extras,
+                format!("Failed to parse ack: {err}"),
+            )),
         }
-
-        Ok(extras)
     }
 
     fn on_recv_packet_execute_inner(
