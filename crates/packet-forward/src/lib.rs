@@ -24,6 +24,7 @@ use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
 use ibc_core_channel_types::Version;
 use ibc_core_host_types::identifiers::{ChannelId, ConnectionId, PortId};
 use ibc_core_router::module::Module as IbcCoreModule;
+use ibc_core_router_types::event::{ModuleEvent, ModuleEventAttribute};
 use ibc_core_router_types::module::ModuleExtras;
 use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
@@ -122,6 +123,44 @@ where
         override_receiver: Signer,
         token_and_amount: Coin<PrefixedDenom>,
     ) -> Result<ModuleExtras, MiddlewareError> {
+        let mut attributes = {
+            let mut attributes = Vec::with_capacity(8);
+
+            // NB: initial set of attrs
+            push_event_attr(
+                &mut attributes,
+                "escrow-amount".to_owned(),
+                token_and_amount.to_string(),
+            );
+            push_event_attr(
+                &mut attributes,
+                "escrow-account".to_owned(),
+                override_receiver.to_string(),
+            );
+            push_event_attr(
+                &mut attributes,
+                "sender".to_owned(),
+                original_sender.to_string(),
+            );
+            push_event_attr(
+                &mut attributes,
+                "receiver".to_owned(),
+                fwd_metadata.receiver.to_string(),
+            );
+            push_event_attr(
+                &mut attributes,
+                "port".to_owned(),
+                fwd_metadata.port.to_string(),
+            );
+            push_event_attr(
+                &mut attributes,
+                "channel".to_owned(),
+                fwd_metadata.channel.to_string(),
+            );
+
+            attributes
+        };
+
         let timeout = fwd_metadata
             .timeout
             .map_or(DEFAULT_FORWARD_TIMEOUT, |msg::Duration(d)| d);
@@ -174,7 +213,17 @@ where
                 MiddlewareError::Message(format!("Failed to store in-flight packet: {err}"))
             })?;
 
-        Ok(ModuleExtras::empty())
+        push_event_attr(
+            &mut attributes,
+            "info".to_owned(),
+            "Packet has been successfully forwarded".to_owned(),
+        );
+
+        Ok({
+            let mut extras = ModuleExtras::empty();
+            emit_event_with_attrs(&mut extras, attributes);
+            extras
+        })
     }
 
     fn receive_funds(
@@ -549,4 +598,15 @@ fn retrieve_inflight_packet(
             timeout: msg::Duration::from_dur(timeout),
         }
     }
+}
+
+fn push_event_attr(attributes: &mut Vec<ModuleEventAttribute>, key: String, value: String) {
+    attributes.push(ModuleEventAttribute { key, value });
+}
+
+fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventAttribute>) {
+    extras.events.push(ModuleEvent {
+        kind: MODULE.to_owned(),
+        attributes,
+    });
 }
