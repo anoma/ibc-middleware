@@ -54,9 +54,6 @@ pub trait PfmContext {
     /// Error returned by fallible operations.
     type Error: fmt::Display;
 
-    /// Validate an ICS-20 transfer.
-    fn send_transfer_validate(&self, msg: MsgTransfer) -> Result<(), Self::Error>;
-
     /// Execute an ICS-20 transfer.
     fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<(), Self::Error>;
 
