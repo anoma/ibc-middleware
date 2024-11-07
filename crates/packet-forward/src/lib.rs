@@ -35,8 +35,6 @@ pub use self::msg::Duration;
 pub use self::state::{InFlightPacket, InFlightPacketKey};
 
 enum MiddlewareError {
-    /// Error message with module extras.
-    MessageWithExtras(ModuleExtras, String),
     /// Error message.
     Message(String),
     /// Forward the call to the next middleware.
@@ -137,22 +135,30 @@ where
         Ok(coin)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn forward_transfer_packet(
         &mut self,
+        extras: &mut ModuleExtras,
         inflight_packet: Option<InFlightPacket>,
         src_packet: &Packet,
         fwd_metadata: msg::ForwardMetadata,
         original_sender: Signer,
         override_receiver: Signer,
         token_and_amount: Coin<PrefixedDenom>,
-    ) -> Result<ModuleExtras, MiddlewareError> {
-        let attributes = {
+    ) -> Result<(), MiddlewareError> {
+        let timeout = fwd_metadata
+            .timeout
+            .map_or(DEFAULT_FORWARD_TIMEOUT, |msg::Duration(d)| d);
+        let retries = fwd_metadata.retries.unwrap_or(DEFAULT_FORWARD_RETRIES);
+
+        emit_event_with_attrs(extras, {
             let mut attributes = Vec::with_capacity(8);
 
+            push_event_attr(&mut attributes, "timeout".to_owned(), timeout.to_string());
             push_event_attr(
                 &mut attributes,
-                "escrow-amount".to_owned(),
-                token_and_amount.to_string(),
+                "retries-remaining".to_owned(),
+                retries.to_string(),
             );
             push_event_attr(
                 &mut attributes,
@@ -179,19 +185,9 @@ where
                 "channel".to_owned(),
                 fwd_metadata.channel.to_string(),
             );
-            push_event_attr(
-                &mut attributes,
-                "info".to_owned(),
-                "Packet has been successfully forwarded".to_owned(),
-            );
 
             attributes
-        };
-
-        let timeout = fwd_metadata
-            .timeout
-            .map_or(DEFAULT_FORWARD_TIMEOUT, |msg::Duration(d)| d);
-        let retries = fwd_metadata.retries.unwrap_or(DEFAULT_FORWARD_RETRIES);
+        });
 
         let next_memo = fwd_metadata
             .next
@@ -248,20 +244,25 @@ where
                 MiddlewareError::Message(format!("Failed to store in-flight packet: {err}"))
             })?;
 
-        Ok({
-            let mut extras = ModuleExtras::empty();
-            emit_event_with_attrs(&mut extras, attributes);
-            extras
-        })
+        emit_event_with_attrs(
+            extras,
+            vec![event_attr(
+                "info".to_owned(),
+                "Packet has been successfully forwarded".to_owned(),
+            )],
+        );
+
+        Ok(())
     }
 
     fn receive_funds(
         &mut self,
+        extras: &mut ModuleExtras,
         source_packet: &Packet,
         source_transfer_pkt: PacketData,
         override_receiver: Signer,
         relayer: &Signer,
-    ) -> Result<ModuleExtras, MiddlewareError> {
+    ) -> Result<(), MiddlewareError> {
         let override_packet = {
             let ics20_packet_data = PacketData {
                 receiver: override_receiver,
@@ -279,33 +280,33 @@ where
             }
         };
 
-        let (extras, maybe_ack) = self.next.on_recv_packet_execute(&override_packet, relayer);
-
-        let Some(ack) = maybe_ack else {
-            return Err(MiddlewareError::MessageWithExtras(
-                extras,
-                "Ack is nil".to_owned(),
-            ));
+        let maybe_ack = {
+            let (next_extras, maybe_ack) =
+                self.next.on_recv_packet_execute(&override_packet, relayer);
+            join_module_extras(extras, next_extras);
+            maybe_ack
         };
 
-        match serde_json::from_slice::<AcknowledgementStatus>(ack.as_bytes()) {
-            Ok(ack) if !ack.is_successful() => Err(MiddlewareError::MessageWithExtras(
-                extras,
-                format!("Ack error: {ack}"),
-            )),
-            Ok(_) => Ok(extras),
-            Err(err) => Err(MiddlewareError::MessageWithExtras(
-                extras,
-                format!("Failed to parse ack: {err}"),
-            )),
+        let Some(ack) = maybe_ack else {
+            return Err(MiddlewareError::Message("Ack is nil".to_owned()));
+        };
+
+        let ack: AcknowledgementStatus = serde_json::from_slice(ack.as_bytes())
+            .map_err(|err| MiddlewareError::Message(format!("Failed to parse ack: {err}")))?;
+
+        if ack.is_successful() {
+            Ok(())
+        } else {
+            Err(MiddlewareError::Message(format!("Ack error: {ack}")))
         }
     }
 
     fn on_recv_packet_execute_inner(
         &mut self,
+        extras: &mut ModuleExtras,
         packet: &Packet,
         relayer: &Signer,
-    ) -> Result<ModuleExtras, MiddlewareError> {
+    ) -> Result<(), MiddlewareError> {
         let (transfer_pkt, fwd_metadata) = decode_forward_msg(packet)?;
 
         let override_receiver =
@@ -313,9 +314,15 @@ where
         let target_coin = self.get_denom_for_this_chain(packet, &transfer_pkt.token)?;
         let original_sender = transfer_pkt.sender.clone();
 
-        let receive_funds_extras =
-            self.receive_funds(packet, transfer_pkt, override_receiver.clone(), relayer)?;
-        let forward_transfer_packet_extras = self.forward_transfer_packet(
+        self.receive_funds(
+            extras,
+            packet,
+            transfer_pkt,
+            override_receiver.clone(),
+            relayer,
+        )?;
+        self.forward_transfer_packet(
+            extras,
             None,
             packet,
             fwd_metadata,
@@ -324,10 +331,7 @@ where
             target_coin,
         )?;
 
-        Ok(join_module_extras(
-            receive_funds_extras,
-            forward_transfer_packet_extras,
-        ))
+        Ok(())
     }
 }
 
@@ -340,19 +344,13 @@ where
         packet: &Packet,
         relayer: &Signer,
     ) -> (ModuleExtras, Option<Acknowledgement>) {
-        self.on_recv_packet_execute_inner(packet, relayer)
-            .map_or_else(
-                |middleware_err| match middleware_err {
-                    MiddlewareError::Forward => self.next.on_recv_packet_execute(packet, relayer),
-                    MiddlewareError::Message(err) => {
-                        (ModuleExtras::empty(), Some(new_error_ack(err).into()))
-                    }
-                    MiddlewareError::MessageWithExtras(extras, err) => {
-                        (extras, Some(new_error_ack(err).into()))
-                    }
-                },
-                |extras| (extras, None),
-            )
+        let mut extras = ModuleExtras::empty();
+
+        match self.on_recv_packet_execute_inner(&mut extras, packet, relayer) {
+            Ok(()) => (extras, None),
+            Err(MiddlewareError::Forward) => self.next.on_recv_packet_execute(packet, relayer),
+            Err(MiddlewareError::Message(err)) => (extras, Some(new_error_ack(err).into())),
+        }
     }
 
     fn on_acknowledgement_packet_validate(
@@ -587,10 +585,9 @@ fn decode_forward_msg(
     )
 }
 
-fn join_module_extras(mut first: ModuleExtras, mut second: ModuleExtras) -> ModuleExtras {
+fn join_module_extras(first: &mut ModuleExtras, mut second: ModuleExtras) {
     first.events.append(&mut second.events);
     first.log.append(&mut second.log);
-    first
 }
 
 fn next_inflight_packet(
@@ -629,10 +626,17 @@ fn next_inflight_packet(
     }
 }
 
-fn push_event_attr(attributes: &mut Vec<ModuleEventAttribute>, key: String, value: String) {
-    attributes.push(ModuleEventAttribute { key, value });
+#[inline]
+fn event_attr(key: String, value: String) -> ModuleEventAttribute {
+    ModuleEventAttribute { key, value }
 }
 
+#[inline]
+fn push_event_attr(attributes: &mut Vec<ModuleEventAttribute>, key: String, value: String) {
+    attributes.push(event_attr(key, value));
+}
+
+#[inline]
 fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventAttribute>) {
     extras.events.push(ModuleEvent {
         kind: MODULE.to_owned(),
