@@ -154,12 +154,6 @@ where
         emit_event_with_attrs(extras, {
             let mut attributes = Vec::with_capacity(8);
 
-            push_event_attr(&mut attributes, "timeout".to_owned(), timeout.to_string());
-            push_event_attr(
-                &mut attributes,
-                "retries-remaining".to_owned(),
-                retries.to_string(),
-            );
             push_event_attr(
                 &mut attributes,
                 "escrow-account".to_owned(),
