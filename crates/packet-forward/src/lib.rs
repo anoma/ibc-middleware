@@ -90,6 +90,15 @@ pub trait PfmContext {
         key: InFlightPacketKey,
         inflight_packet: InFlightPacket,
     ) -> Result<(), Self::Error>;
+
+    /// Retrieve an [in-flight packet](InFlightPacket) from storage.
+    fn retrieve_inflight_packet(
+        &self,
+        key: &InFlightPacketKey,
+    ) -> Result<Option<InFlightPacket>, Self::Error>;
+
+    /// Delete an [in-flight packet](InFlightPacket) from storage.
+    fn delete_inflight_packet(&mut self, key: &InFlightPacketKey) -> Result<(), Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -137,10 +146,9 @@ where
         override_receiver: Signer,
         token_and_amount: Coin<PrefixedDenom>,
     ) -> Result<ModuleExtras, MiddlewareError> {
-        let mut attributes = {
+        let attributes = {
             let mut attributes = Vec::with_capacity(8);
 
-            // NB: initial set of attrs
             push_event_attr(
                 &mut attributes,
                 "escrow-amount".to_owned(),
@@ -170,6 +178,11 @@ where
                 &mut attributes,
                 "channel".to_owned(),
                 fwd_metadata.channel.to_string(),
+            );
+            push_event_attr(
+                &mut attributes,
+                "info".to_owned(),
+                "Packet has been successfully forwarded".to_owned(),
             );
 
             attributes
@@ -223,7 +236,7 @@ where
                     channel: fwd_metadata.channel,
                     sequence,
                 },
-                retrieve_inflight_packet(
+                next_inflight_packet(
                     inflight_packet,
                     original_sender,
                     src_packet,
@@ -234,12 +247,6 @@ where
             .map_err(|err| {
                 MiddlewareError::Message(format!("Failed to store in-flight packet: {err}"))
             })?;
-
-        push_event_attr(
-            &mut attributes,
-            "info".to_owned(),
-            "Packet has been successfully forwarded".to_owned(),
-        );
 
         Ok({
             let mut extras = ModuleExtras::empty();
@@ -586,7 +593,7 @@ fn join_module_extras(mut first: ModuleExtras, mut second: ModuleExtras) -> Modu
     first
 }
 
-fn retrieve_inflight_packet(
+fn next_inflight_packet(
     inflight_packet: Option<InFlightPacket>,
     original_sender: Signer,
     src_packet: &Packet,
