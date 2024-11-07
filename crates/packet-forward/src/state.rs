@@ -8,6 +8,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::msg::Duration;
 
+/// [`InFlightPacket`] data to facilitate its storage in a
+/// key:value store.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
+pub struct InFlightPacketKey {
+    /// Port of the transfer through the current chain.
+    pub port: PortId,
+    /// Channel of the transfer through the current chain.
+    pub channel: ChannelId,
+    /// Sequence number of the packet traversing the `port/channel`
+    /// pair defined above, through the current chain.
+    pub sequence: Sequence,
+}
+
 /// Packet that is currently being transmitted to a destination
 /// chain over multiple hops.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]

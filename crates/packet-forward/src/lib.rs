@@ -22,7 +22,7 @@ use ibc_core_channel_types::error::{ChannelError, PacketError};
 use ibc_core_channel_types::packet::Packet;
 use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
 use ibc_core_channel_types::Version;
-use ibc_core_host_types::identifiers::{ChannelId, ConnectionId, PortId};
+use ibc_core_host_types::identifiers::{ChannelId, ConnectionId, PortId, Sequence};
 use ibc_core_router::module::Module as IbcCoreModule;
 use ibc_core_router_types::event::{ModuleEvent, ModuleEventAttribute};
 use ibc_core_router_types::module::ModuleExtras;
@@ -32,7 +32,7 @@ use ibc_primitives::Signer;
 #[doc(inline)]
 pub use self::msg::Duration;
 #[doc(inline)]
-pub use self::state::InFlightPacket;
+pub use self::state::{InFlightPacket, InFlightPacketKey};
 
 enum MiddlewareError {
     /// Error message with module extras.
@@ -60,8 +60,9 @@ pub trait PfmContext {
     /// Error returned by fallible operations.
     type Error: fmt::Display;
 
-    /// Execute an ICS-20 transfer.
-    fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<(), Self::Error>;
+    /// Execute an ICS-20 transfer. This method returns the [`Sequence`]
+    /// of the sent packet.
+    fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<Sequence, Self::Error>;
 
     /// Get an escrow account that will receive funds to be forwarded through
     /// channel `channel`.
@@ -84,8 +85,11 @@ pub trait PfmContext {
 
     /// Stores an [in-flight packet](InFlightPacket) (i.e. a packet
     /// that is currently being transmitted over multiple hops by the PFM).
-    fn store_inflight_packet(&mut self, inflight_packet: InFlightPacket)
-        -> Result<(), Self::Error>;
+    fn store_inflight_packet(
+        &mut self,
+        key: InFlightPacketKey,
+        inflight_packet: InFlightPacket,
+    ) -> Result<(), Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -189,8 +193,8 @@ where
             .into();
 
         let fwd_msg_transfer = MsgTransfer {
-            port_id_on_a: fwd_metadata.port,
-            chan_id_on_a: fwd_metadata.channel,
+            port_id_on_a: fwd_metadata.port.clone(),
+            chan_id_on_a: fwd_metadata.channel.clone(),
             timeout_height_on_b: TimeoutHeight::Never,
             timeout_timestamp_on_b: self.next.timeout_timestamp(timeout).map_err(|err| {
                 MiddlewareError::Message(format!(
@@ -205,20 +209,28 @@ where
             },
         };
 
-        self.next
+        let sequence = self
+            .next
             .send_transfer_execute(fwd_msg_transfer)
             .map_err(|err| {
                 MiddlewareError::Message(format!("Failed to send forward packet: {err}"))
             })?;
 
         self.next
-            .store_inflight_packet(retrieve_inflight_packet(
-                inflight_packet,
-                original_sender,
-                src_packet,
-                retries,
-                timeout,
-            ))
+            .store_inflight_packet(
+                InFlightPacketKey {
+                    port: fwd_metadata.port,
+                    channel: fwd_metadata.channel,
+                    sequence,
+                },
+                retrieve_inflight_packet(
+                    inflight_packet,
+                    original_sender,
+                    src_packet,
+                    retries,
+                    timeout,
+                ),
+            )
             .map_err(|err| {
                 MiddlewareError::Message(format!("Failed to store in-flight packet: {err}"))
             })?;
