@@ -5,6 +5,7 @@
 extern crate alloc;
 
 mod msg;
+mod state;
 
 use alloc::format;
 use core::fmt;
@@ -29,7 +30,9 @@ use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
 
 #[doc(inline)]
-pub use self::msg::{Duration, InFlightPacket};
+pub use self::msg::Duration;
+#[doc(inline)]
+pub use self::state::InFlightPacket;
 
 enum MiddlewareError {
     /// Error message with module extras.
