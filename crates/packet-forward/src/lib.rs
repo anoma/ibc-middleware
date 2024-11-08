@@ -64,6 +64,7 @@ pub trait PfmContext {
     fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<Sequence, Self::Error>;
 
     /// Handle receiving a refund from the next hop.
+    /// This involves minting or unescrowing tokens on this chain.
     fn receive_refund_execute(
         &mut self,
         packet_forwarded_by_pfm_to_next_hop: &Packet,
@@ -71,6 +72,7 @@ pub trait PfmContext {
     ) -> Result<(), Self::Error>;
 
     /// Handle sending a refund back to the previous hop.
+    /// This involves burning or escrowing tokens on this chain.
     fn send_refund_execute(
         &mut self,
         packet_from_previous_hop_sent_to_pfm: &InFlightPacket,
