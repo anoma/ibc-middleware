@@ -38,7 +38,7 @@ enum MiddlewareError {
     /// Error message.
     Message(String),
     /// Forward the call to the next middleware.
-    Forward,
+    ForwardToNextMiddleware,
 }
 
 /// Module name of the PFM.
@@ -295,6 +295,16 @@ where
         }
     }
 
+    fn write_acknowledgement_for_forwarded_packet(
+        &mut self,
+        _packet: &Packet,
+        _transfer_pkt: PacketData,
+        _inflight_packet: InFlightPacket,
+        _acknowledgement: &Acknowledgement,
+    ) -> Result<(), MiddlewareError> {
+        todo!()
+    }
+
     fn on_recv_packet_execute_inner(
         &mut self,
         extras: &mut ModuleExtras,
@@ -327,6 +337,56 @@ where
 
         Ok(())
     }
+
+    fn on_acknowledgement_packet_execute_inner(
+        &mut self,
+        extras: &mut ModuleExtras,
+        packet: &Packet,
+        acknowledgement: &Acknowledgement,
+    ) -> Result<(), MiddlewareError> {
+        let transfer_pkt = decode_ics20_msg(packet)?;
+
+        let inflight_packet_key = InFlightPacketKey {
+            port: packet.port_id_on_a.clone(),
+            channel: packet.chan_id_on_a.clone(),
+            sequence: packet.seq_on_a,
+        };
+
+        let inflight_packet = self
+            .next
+            .retrieve_inflight_packet(&inflight_packet_key)
+            .map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to retrieve in-flight packet from storage: {err}"
+                ))
+            })?
+            .ok_or(MiddlewareError::ForwardToNextMiddleware)?;
+
+        self.next
+            .delete_inflight_packet(&inflight_packet_key)
+            .map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to delete in-flight packet from storage: {err}"
+                ))
+            })?;
+
+        self.write_acknowledgement_for_forwarded_packet(
+            packet,
+            transfer_pkt,
+            inflight_packet,
+            acknowledgement,
+        )?;
+
+        emit_event_with_attrs(
+            extras,
+            vec![event_attr(
+                "info".to_owned(),
+                "Packet acknowledgement processed successfully".to_owned(),
+            )],
+        );
+
+        Ok(())
+    }
 }
 
 impl<M> IbcCoreModule for PacketForwardMiddleware<M>
@@ -342,7 +402,9 @@ where
 
         match self.on_recv_packet_execute_inner(&mut extras, packet, relayer) {
             Ok(()) => (extras, None),
-            Err(MiddlewareError::Forward) => self.next.on_recv_packet_execute(packet, relayer),
+            Err(MiddlewareError::ForwardToNextMiddleware) => {
+                self.next.on_recv_packet_execute(packet, relayer)
+            }
             Err(MiddlewareError::Message(err)) => (extras, Some(new_error_ack(err).into())),
         }
     }
@@ -363,8 +425,15 @@ where
         acknowledgement: &Acknowledgement,
         relayer: &Signer,
     ) -> (ModuleExtras, Result<(), PacketError>) {
-        self.next
-            .on_acknowledgement_packet_execute(packet, acknowledgement, relayer)
+        let mut extras = ModuleExtras::empty();
+
+        match self.on_acknowledgement_packet_execute_inner(&mut extras, packet, acknowledgement) {
+            Ok(()) => (extras, Ok(())),
+            Err(MiddlewareError::ForwardToNextMiddleware) => self
+                .next
+                .on_acknowledgement_packet_execute(packet, acknowledgement, relayer),
+            Err(MiddlewareError::Message(err)) => (extras, new_packet_error(err)),
+        }
     }
 
     fn on_timeout_packet_validate(
@@ -541,6 +610,13 @@ fn new_error_ack(message: impl fmt::Display) -> AcknowledgementStatus {
     )
 }
 
+#[inline]
+fn new_packet_error(message: impl fmt::Display) -> Result<(), PacketError> {
+    Err(PacketError::Other {
+        description: format!("{MODULE} error: {message}"),
+    })
+}
+
 fn get_receiver<C: PfmContext>(
     ctx: &C,
     channel: &ChannelId,
@@ -550,27 +626,30 @@ fn get_receiver<C: PfmContext>(
         .map_err(|err| MiddlewareError::Message(format!("Failed to get override receiver: {err}")))
 }
 
+fn decode_ics20_msg(packet: &Packet) -> Result<PacketData, MiddlewareError> {
+    serde_json::from_slice(&packet.data).map_err(|_| {
+        // NB: if `packet.data` is not a valid fungible token transfer
+        // packet, we forward the call to the next middleware
+        MiddlewareError::ForwardToNextMiddleware
+    })
+}
+
 fn decode_forward_msg(
     packet: &Packet,
 ) -> Result<(PacketData, msg::ForwardMetadata), MiddlewareError> {
-    let Ok(transfer_pkt) = serde_json::from_slice::<PacketData>(&packet.data) else {
-        // NB: if `packet.data` is not a valid fungible token transfer
-        // packet, we forward the call to the next middleware
-        return Err(MiddlewareError::Forward);
-    };
+    let transfer_pkt = decode_ics20_msg(packet)?;
 
-    let Ok(json_obj_memo) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
-        transfer_pkt.memo.as_ref(),
-    ) else {
-        // NB: if the ICS-20 packet memo is not a valid JSON object, we forward
-        // this call to the next middleware
-        return Err(MiddlewareError::Forward);
-    };
+    let json_obj_memo: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(transfer_pkt.memo.as_ref()).map_err(|_| {
+            // NB: if the ICS-20 packet memo is not a valid JSON object, we forward
+            // this call to the next middleware
+            MiddlewareError::ForwardToNextMiddleware
+        })?;
 
     if !json_obj_memo.contains_key("forward") {
         // NB: the memo was a valid json object, but it wasn't up to
         // the PFM to consume it, so we forward the call to the next middleware
-        return Err(MiddlewareError::Forward);
+        return Err(MiddlewareError::ForwardToNextMiddleware);
     }
 
     serde_json::from_value(json_obj_memo.into()).map_or_else(
