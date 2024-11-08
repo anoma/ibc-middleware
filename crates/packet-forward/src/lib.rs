@@ -13,7 +13,7 @@ use core::num::NonZeroU8;
 
 use ibc_app_transfer_types::msgs::transfer::MsgTransfer;
 use ibc_app_transfer_types::packet::PacketData;
-use ibc_app_transfer_types::{Coin, PrefixedDenom, TracePrefix};
+use ibc_app_transfer_types::{Coin, PrefixedDenom};
 use ibc_core_channel_types::acknowledgement::{
     Acknowledgement, AcknowledgementStatus, StatusValue as AckStatusValue,
 };
@@ -97,6 +97,16 @@ pub trait PfmContext {
 
     /// Delete an [in-flight packet](InFlightPacket) from storage.
     fn delete_inflight_packet(&mut self, key: &InFlightPacketKey) -> Result<(), Self::Error>;
+
+    /// Get the denomination for this chain.
+    fn get_denom_for_this_chain(
+        &self,
+        this_chain_port: &PortId,
+        this_chain_chan: &ChannelId,
+        source_port: &PortId,
+        source_chan: &ChannelId,
+        source_denom: &PrefixedDenom,
+    ) -> Result<PrefixedDenom, Self::Error>;
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)
@@ -117,24 +127,6 @@ impl<M> PacketForwardMiddleware<M>
 where
     M: IbcCoreModule + PfmContext,
 {
-    fn get_denom_for_this_chain(
-        &self,
-        source_packet: &Packet,
-        source_coin: &Coin<PrefixedDenom>,
-    ) -> Result<Coin<PrefixedDenom>, MiddlewareError> {
-        let mut coin = source_coin.clone();
-
-        // NB: Suppose the following packet flow `A => B => C`,
-        // on chains A, B, and C. If we are the first hop (i.e. B),
-        // then we must unwrap the denom.
-        coin.denom.trace_path.remove_prefix(&TracePrefix::new(
-            source_packet.port_id_on_b.clone(),
-            source_packet.chan_id_on_b.clone(),
-        ));
-
-        Ok(coin)
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn forward_transfer_packet(
         &mut self,
@@ -315,7 +307,22 @@ where
 
         let override_receiver =
             get_receiver(&self.next, &packet.chan_id_on_b, &transfer_pkt.sender)?;
-        let target_coin = self.get_denom_for_this_chain(packet, &transfer_pkt.token)?;
+        let denom_on_this_chain = self
+            .next
+            .get_denom_for_this_chain(
+                &packet.port_id_on_b,
+                &packet.chan_id_on_b,
+                &packet.port_id_on_a,
+                &packet.chan_id_on_a,
+                &transfer_pkt.token.denom,
+            )
+            .map_err(|err| {
+                MiddlewareError::Message(format!("Failed to get coin denom for this chain: {err}"))
+            })?;
+        let coin_on_this_chain = Coin {
+            denom: denom_on_this_chain,
+            amount: transfer_pkt.token.amount,
+        };
         let original_sender = transfer_pkt.sender.clone();
 
         self.receive_funds(
@@ -332,7 +339,7 @@ where
             fwd_metadata,
             original_sender,
             override_receiver,
-            target_coin,
+            coin_on_this_chain,
         )?;
 
         Ok(())
