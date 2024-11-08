@@ -314,7 +314,7 @@ where
         let (transfer_pkt, fwd_metadata) = decode_forward_msg(packet)?;
 
         let override_receiver =
-            get_receiver(&self.next, &fwd_metadata.channel, &transfer_pkt.sender)?;
+            get_receiver(&self.next, &packet.chan_id_on_b, &transfer_pkt.sender)?;
         let target_coin = self.get_denom_for_this_chain(packet, &transfer_pkt.token)?;
         let original_sender = transfer_pkt.sender.clone();
 
