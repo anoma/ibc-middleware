@@ -8,6 +8,7 @@ mod msg;
 mod state;
 
 use alloc::format;
+use alloc::vec::Vec;
 use core::fmt;
 use core::num::NonZeroU8;
 
@@ -61,6 +62,26 @@ pub trait PfmContext {
     /// Execute an ICS-20 transfer. This method returns the [`Sequence`]
     /// of the sent packet.
     fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<Sequence, Self::Error>;
+
+    /// Handle receiving a refund from the next hop.
+    fn receive_refund_execute(
+        &mut self,
+        packet_forwarded_by_pfm_to_next_hop: &Packet,
+        transfer_forwarded_by_pfm_to_next_hop: PacketData,
+    ) -> Result<(), Self::Error>;
+
+    /// Handle sending a refund back to the previous hop.
+    fn send_refund_execute(
+        &mut self,
+        packet_from_previous_hop_sent_to_pfm: &InFlightPacket,
+    ) -> Result<(), Self::Error>;
+
+    /// Write the `acknowledgement` of `packet`, and emit events.
+    fn write_ack_and_events(
+        &mut self,
+        packet: &Packet,
+        acknowledgement: &Acknowledgement,
+    ) -> Result<(), Self::Error>;
 
     /// Get an escrow account that will receive funds to be forwarded through
     /// channel `channel`.
@@ -133,6 +154,7 @@ where
         extras: &mut ModuleExtras,
         inflight_packet: Option<InFlightPacket>,
         src_packet: &Packet,
+        transfer_pkt: PacketData,
         fwd_metadata: msg::ForwardMetadata,
         original_sender: Signer,
         override_receiver: Signer,
@@ -222,6 +244,7 @@ where
                     inflight_packet,
                     original_sender,
                     src_packet,
+                    transfer_pkt,
                     retries,
                     timeout,
                 ),
@@ -289,12 +312,36 @@ where
 
     fn write_acknowledgement_for_forwarded_packet(
         &mut self,
-        _packet: &Packet,
-        _transfer_pkt: PacketData,
-        _inflight_packet: InFlightPacket,
-        _acknowledgement: &Acknowledgement,
+        packet: &Packet,
+        transfer_pkt: PacketData,
+        inflight_packet: InFlightPacket,
+        acknowledgement: &Acknowledgement,
     ) -> Result<(), MiddlewareError> {
-        todo!()
+        self.next
+            .receive_refund_execute(packet, transfer_pkt)
+            .map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to refund transfer sent to next hop: {err}"
+                ))
+            })?;
+
+        self.next
+            .send_refund_execute(&inflight_packet)
+            .map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to refund transfer received from previous hop: {err}"
+                ))
+            })?;
+
+        self.next
+            .write_ack_and_events(&inflight_packet.into(), acknowledgement)
+            .map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to write acknowledgement of in-flight packet: {err}"
+                ))
+            })?;
+
+        Ok(())
     }
 
     fn on_recv_packet_execute_inner(
@@ -328,7 +375,7 @@ where
         self.receive_funds(
             extras,
             packet,
-            transfer_pkt,
+            transfer_pkt.clone(),
             override_receiver.clone(),
             relayer,
         )?;
@@ -336,6 +383,7 @@ where
             extras,
             None,
             packet,
+            transfer_pkt,
             fwd_metadata,
             original_sender,
             override_receiver,
@@ -674,6 +722,7 @@ fn next_inflight_packet(
     inflight_packet: Option<InFlightPacket>,
     original_sender: Signer,
     src_packet: &Packet,
+    transfer_pkt: PacketData,
     retries: NonZeroU8,
     timeout: dur::Duration,
 ) -> InFlightPacket {
@@ -698,7 +747,7 @@ fn next_inflight_packet(
             packet_src_channel_id: src_packet.chan_id_on_a.clone(),
             packet_timeout_timestamp: src_packet.timeout_timestamp_on_b,
             packet_timeout_height: src_packet.timeout_height_on_b,
-            packet_data: src_packet.data.clone(),
+            packet_data: transfer_pkt,
             refund_sequence: src_packet.seq_on_a,
             retries_remaining: retries,
             timeout: msg::Duration::from_dur(timeout),

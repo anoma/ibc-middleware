@@ -1,6 +1,7 @@
-use alloc::vec::Vec;
 use core::num::NonZeroU8;
 
+use ibc_app_transfer_types::packet::PacketData;
+use ibc_core_channel_types::packet::Packet;
 use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
 use ibc_core_host_types::identifiers::{ChannelId, PortId, Sequence};
 use ibc_primitives::Signer;
@@ -23,7 +24,7 @@ pub struct InFlightPacketKey {
 
 /// Packet that is currently being transmitted to a destination
 /// chain over multiple hops.
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct InFlightPacket {
     /// Sender of the packet on the source chain.
     pub original_sender_address: Signer,
@@ -42,7 +43,7 @@ pub struct InFlightPacket {
     /// Timeout height of the original packet.
     pub packet_timeout_height: TimeoutHeight,
     /// Data of the source packet.
-    pub packet_data: Vec<u8>,
+    pub packet_data: PacketData,
     /// Sequence number of the source packet.
     pub refund_sequence: Sequence,
     /// Number of retries remaining before the
@@ -51,4 +52,19 @@ pub struct InFlightPacket {
     /// Timeout duration, relative to some
     /// instant (usually a block timestamp).
     pub timeout: Duration,
+}
+
+impl From<InFlightPacket> for Packet {
+    fn from(inflight_packet: InFlightPacket) -> Packet {
+        Self {
+            seq_on_a: inflight_packet.refund_sequence,
+            port_id_on_a: inflight_packet.packet_src_port_id,
+            chan_id_on_a: inflight_packet.packet_src_channel_id,
+            port_id_on_b: inflight_packet.refund_port_id,
+            chan_id_on_b: inflight_packet.refund_channel_id,
+            data: serde_json::to_vec(&inflight_packet.packet_data).unwrap(),
+            timeout_height_on_b: inflight_packet.packet_timeout_height,
+            timeout_timestamp_on_b: inflight_packet.packet_timeout_timestamp,
+        }
+    }
 }
