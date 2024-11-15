@@ -35,7 +35,7 @@ pub struct ForwardMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// The number of retries before a packet is invalidated.
     pub retries: Option<NonZeroU8>,
-    /// Next hop in the forwarding chain. This is yet
+    /// The memo of the next forward transfer. This might be
     /// another [`ForwardMetadata`] structure, along with
     /// any additional middleware callbacks.
     #[serde(skip_serializing_if = "Option::is_none")]
