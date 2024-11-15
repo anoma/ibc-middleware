@@ -12,6 +12,7 @@ use alloc::vec::Vec;
 use core::fmt;
 use core::num::NonZeroU8;
 
+use either::*;
 use ibc_app_transfer_types::msgs::transfer::MsgTransfer;
 use ibc_app_transfer_types::packet::PacketData;
 use ibc_app_transfer_types::{Coin, PrefixedDenom};
@@ -162,9 +163,7 @@ where
     fn forward_transfer_packet(
         &mut self,
         extras: &mut ModuleExtras,
-        inflight_packet: Option<InFlightPacket>,
-        src_packet: &Packet,
-        transfer_pkt: PacketData,
+        packet: Either<(&Packet, PacketData), InFlightPacket>,
         fwd_metadata: msg::ForwardMetadata,
         original_sender: Signer,
         override_receiver: Signer,
@@ -178,6 +177,11 @@ where
         emit_event_with_attrs(extras, {
             let mut attributes = Vec::with_capacity(8);
 
+            push_event_attr(
+                &mut attributes,
+                "is-retry".to_owned(),
+                packet.is_right().to_string(),
+            );
             push_event_attr(
                 &mut attributes,
                 "escrow-account".to_owned(),
@@ -250,14 +254,7 @@ where
                     channel: fwd_metadata.channel,
                     sequence,
                 },
-                next_inflight_packet(
-                    inflight_packet,
-                    original_sender,
-                    src_packet,
-                    transfer_pkt,
-                    retries,
-                    timeout,
-                ),
+                next_inflight_packet(packet, original_sender, retries, timeout),
             )
             .map_err(|err| {
                 MiddlewareError::Message(format!("Failed to store in-flight packet: {err}"))
@@ -385,12 +382,52 @@ where
 
     fn retry_timeout(
         &mut self,
-        _source_port: &PortId,
-        _source_channel: &ChannelId,
-        _transfer_pkt: PacketData,
-        _inflight_packet: InFlightPacket,
+        extras: &mut ModuleExtras,
+        port: &PortId,
+        channel: &ChannelId,
+        transfer_pkt: PacketData,
+        inflight_packet: InFlightPacket,
     ) -> Result<(), MiddlewareError> {
-        todo!()
+        let next = {
+            let memo = transfer_pkt.memo.as_ref();
+
+            if !memo.is_empty() {
+                let json_obj_memo: serde_json::Map<String, serde_json::Value> =
+                    serde_json::from_str(memo).map_err(|err| {
+                        MiddlewareError::Message(format!("Failed to decode next memo: {err}"))
+                    })?;
+                Some(json_obj_memo)
+            } else {
+                None
+            }
+        };
+        let fwd_metadata = msg::ForwardMetadata {
+            receiver: transfer_pkt.receiver,
+            port: port.clone(),
+            channel: channel.clone(),
+            timeout: Some(inflight_packet.timeout.clone()),
+            retries: {
+                debug_assert!(
+                    inflight_packet.retries_remaining.is_some(),
+                    "We should only hit this branch with at least one retry remaining"
+                );
+                inflight_packet.retries_remaining
+            },
+            next,
+        };
+
+        let original_sender = inflight_packet.original_sender_address.clone();
+        let override_receiver = transfer_pkt.sender;
+        let token_and_amount = transfer_pkt.token;
+
+        self.forward_transfer_packet(
+            extras,
+            Right(inflight_packet),
+            fwd_metadata,
+            original_sender,
+            override_receiver,
+            token_and_amount,
+        )
     }
 
     fn on_recv_packet_execute_inner(
@@ -430,9 +467,7 @@ where
         )?;
         self.forward_transfer_packet(
             extras,
-            None,
-            packet,
-            transfer_pkt,
+            Left((packet, transfer_pkt)),
             fwd_metadata,
             original_sender,
             override_receiver,
@@ -513,6 +548,7 @@ where
                 })?;
 
                 self.retry_timeout(
+                    extras,
                     &packet.port_id_on_a,
                     &packet.chan_id_on_a,
                     transfer_pkt,
@@ -843,29 +879,13 @@ fn join_module_extras(first: &mut ModuleExtras, mut second: ModuleExtras) {
 }
 
 fn next_inflight_packet(
-    inflight_packet: Option<InFlightPacket>,
+    packet: Either<(&Packet, PacketData), InFlightPacket>,
     original_sender: Signer,
-    src_packet: &Packet,
-    transfer_pkt: PacketData,
     retries: NonZeroU8,
     timeout: dur::Duration,
 ) -> InFlightPacket {
-    if let Some(pkt) = inflight_packet {
-        let retries_remaining = {
-            NonZeroU8::new(
-                pkt.retries_remaining
-                    .expect("We should only hit this branch with at least one retry remaining")
-                    .get()
-                    .wrapping_sub(1),
-            )
-        };
-
-        InFlightPacket {
-            retries_remaining,
-            ..pkt
-        }
-    } else {
-        InFlightPacket {
+    packet.either(
+        |(src_packet, transfer_pkt)| InFlightPacket {
             original_sender_address: original_sender,
             refund_port_id: src_packet.port_id_on_b.clone(),
             refund_channel_id: src_packet.chan_id_on_b.clone(),
@@ -877,8 +897,24 @@ fn next_inflight_packet(
             refund_sequence: src_packet.seq_on_a,
             retries_remaining: Some(retries),
             timeout: msg::Duration::from_dur(timeout),
-        }
-    }
+        },
+        |inflight_packet| {
+            let retries_remaining = {
+                NonZeroU8::new(
+                    inflight_packet
+                        .retries_remaining
+                        .expect("We should only hit this branch with at least one retry remaining")
+                        .get()
+                        .wrapping_sub(1),
+                )
+            };
+
+            InFlightPacket {
+                retries_remaining,
+                ..inflight_packet
+            }
+        },
+    )
 }
 
 #[inline]

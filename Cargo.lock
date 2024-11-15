@@ -713,6 +713,7 @@ name = "ibc-middleware-packet-forward"
 version = "0.1.0"
 dependencies = [
  "dur",
+ "either",
  "ibc-app-transfer-types",
  "ibc-core-channel",
  "ibc-core-channel-types",
