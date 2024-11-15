@@ -445,6 +445,14 @@ where
 
         Ok(())
     }
+
+    fn on_timeout_packet_execute_inner(
+        &mut self,
+        _extras: &mut ModuleExtras,
+        _packet: &Packet,
+    ) -> Result<(), MiddlewareError> {
+        Ok(())
+    }
 }
 
 impl<M> IbcCoreModule for PacketForwardMiddleware<M>
@@ -507,7 +515,15 @@ where
         packet: &Packet,
         relayer: &Signer,
     ) -> (ModuleExtras, Result<(), PacketError>) {
-        self.next.on_timeout_packet_execute(packet, relayer)
+        let mut extras = ModuleExtras::empty();
+
+        match self.on_timeout_packet_execute_inner(&mut extras, packet) {
+            Ok(()) => (extras, Ok(())),
+            Err(MiddlewareError::ForwardToNextMiddleware) => {
+                self.next.on_timeout_packet_execute(packet, relayer)
+            }
+            Err(MiddlewareError::Message(err)) => (extras, new_packet_error(err)),
+        }
     }
 
     // =========================================================================
