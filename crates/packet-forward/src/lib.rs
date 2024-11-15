@@ -35,22 +35,11 @@ pub use self::msg::Duration;
 #[doc(inline)]
 pub use self::state::{InFlightPacket, InFlightPacketKey};
 
-#[allow(clippy::large_enum_variant)]
 enum RetryOutcome {
     /// We should retry submitting the in-flight packet.
-    GoAhead {
-        /// The in-flight packet to retry.
-        inflight_packet: InFlightPacket,
-    },
+    GoAhead,
     /// The maximum number of retries for a packet were exceeded.
-    MaxRetriesExceeded {
-        /// Sequence number of the packet that timed out.
-        refund_sequence: Sequence,
-        /// Port id of the packet that timed out.
-        refund_port_id: PortId,
-        /// Channel id of the packet that timed out.
-        refund_channel_id: ChannelId,
-    },
+    MaxRetriesExceeded,
 }
 
 enum MiddlewareError {
@@ -365,7 +354,10 @@ where
         Ok(())
     }
 
-    fn timeout_should_retry(&self, packet: &Packet) -> Result<RetryOutcome, MiddlewareError> {
+    fn timeout_should_retry(
+        &self,
+        packet: &Packet,
+    ) -> Result<(RetryOutcome, InFlightPacket), MiddlewareError> {
         let inflight_packet_key = InFlightPacketKey {
             port: packet.port_id_on_a.clone(),
             channel: packet.chan_id_on_a.clone(),
@@ -382,22 +374,13 @@ where
             })?
             .ok_or(MiddlewareError::ForwardToNextMiddleware)?;
 
-        Ok(if inflight_packet.retries_remaining.is_some() {
-            RetryOutcome::GoAhead { inflight_packet }
+        let outcome = if inflight_packet.retries_remaining.is_some() {
+            RetryOutcome::GoAhead
         } else {
-            let InFlightPacket {
-                refund_sequence,
-                refund_port_id,
-                refund_channel_id,
-                ..
-            } = inflight_packet;
+            RetryOutcome::MaxRetriesExceeded
+        };
 
-            RetryOutcome::MaxRetriesExceeded {
-                refund_sequence,
-                refund_port_id,
-                refund_channel_id,
-            }
-        })
+        Ok((outcome, inflight_packet))
     }
 
     fn retry_timeout(
@@ -518,7 +501,7 @@ where
         let transfer_pkt = decode_ics20_msg(packet)?;
 
         match self.timeout_should_retry(packet)? {
-            RetryOutcome::GoAhead { inflight_packet } => {
+            (RetryOutcome::GoAhead, inflight_packet) => {
                 let (next_extras, result) = self.next.on_timeout_packet_execute(packet, relayer);
 
                 join_module_extras(extras, next_extras);
@@ -536,14 +519,43 @@ where
                     inflight_packet,
                 )
             }
-            RetryOutcome::MaxRetriesExceeded {
-                refund_sequence,
-                refund_port_id,
-                refund_channel_id,
-            } => Err(MiddlewareError::Message(format!(
-                "In-flight packet max retries exceeded, for packet with sequence \
-                     {refund_sequence} on {refund_port_id}/{refund_channel_id}"
-            ))),
+            (RetryOutcome::MaxRetriesExceeded, inflight_packet) => {
+                let inflight_packet_key = InFlightPacketKey {
+                    port: packet.port_id_on_a.clone(),
+                    channel: packet.chan_id_on_a.clone(),
+                    sequence: packet.seq_on_a,
+                };
+
+                self.next
+                    .delete_inflight_packet(&inflight_packet_key)
+                    .map_err(|err| {
+                        MiddlewareError::Message(format!(
+                            "Failed to delete in-flight packet from storage: {err}"
+                        ))
+                    })?;
+
+                let acknowledgement = {
+                    let InFlightPacket {
+                        refund_sequence,
+                        refund_port_id,
+                        refund_channel_id,
+                        ..
+                    } = &inflight_packet;
+
+                    new_error_ack(format!(
+                        "In-flight packet max retries exceeded, for packet with sequence \
+                         {refund_sequence} on {refund_port_id}/{refund_channel_id}"
+                    ))
+                    .into()
+                };
+
+                self.write_acknowledgement_for_forwarded_packet(
+                    packet,
+                    transfer_pkt,
+                    inflight_packet,
+                    &acknowledgement,
+                )
+            }
         }
     }
 }
