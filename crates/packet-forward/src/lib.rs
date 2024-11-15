@@ -121,7 +121,8 @@ pub trait PfmContext {
     /// Delete an [in-flight packet](InFlightPacket) from storage.
     fn delete_inflight_packet(&mut self, key: &InFlightPacketKey) -> Result<(), Self::Error>;
 
-    /// Get the denomination for this chain.
+    /// Get the denomination of `source_denom` for this chain,
+    /// either involving wrapping or unwrapping of tokens.
     fn get_denom_for_this_chain(
         &self,
         this_chain_port: &PortId,
