@@ -35,6 +35,24 @@ pub use self::msg::Duration;
 #[doc(inline)]
 pub use self::state::{InFlightPacket, InFlightPacketKey};
 
+#[allow(clippy::large_enum_variant)]
+enum RetryOutcome {
+    /// We should retry submitting the in-flight packet.
+    GoAhead {
+        /// The in-flight packet to retry.
+        inflight_packet: InFlightPacket,
+    },
+    /// The maximum number of retries for a packet were exceeded.
+    MaxRetriesExceeded {
+        /// Sequence number of the packet that timed out.
+        refund_sequence: Sequence,
+        /// Port id of the packet that timed out.
+        refund_port_id: PortId,
+        /// Channel id of the packet that timed out.
+        refund_channel_id: ChannelId,
+    },
+}
+
 enum MiddlewareError {
     /// Error message.
     Message(String),
@@ -347,6 +365,51 @@ where
         Ok(())
     }
 
+    fn timeout_should_retry(&self, packet: &Packet) -> Result<RetryOutcome, MiddlewareError> {
+        let inflight_packet_key = InFlightPacketKey {
+            port: packet.port_id_on_a.clone(),
+            channel: packet.chan_id_on_a.clone(),
+            sequence: packet.seq_on_a,
+        };
+
+        let inflight_packet = self
+            .next
+            .retrieve_inflight_packet(&inflight_packet_key)
+            .map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to retrieve in-flight packet from storage: {err}"
+                ))
+            })?
+            .ok_or(MiddlewareError::ForwardToNextMiddleware)?;
+
+        Ok(if inflight_packet.retries_remaining.is_some() {
+            RetryOutcome::GoAhead { inflight_packet }
+        } else {
+            let InFlightPacket {
+                refund_sequence,
+                refund_port_id,
+                refund_channel_id,
+                ..
+            } = inflight_packet;
+
+            RetryOutcome::MaxRetriesExceeded {
+                refund_sequence,
+                refund_port_id,
+                refund_channel_id,
+            }
+        })
+    }
+
+    fn retry_timeout(
+        &mut self,
+        _source_port: &PortId,
+        _source_channel: &ChannelId,
+        _transfer_pkt: PacketData,
+        _inflight_packet: InFlightPacket,
+    ) -> Result<(), MiddlewareError> {
+        todo!()
+    }
+
     fn on_recv_packet_execute_inner(
         &mut self,
         extras: &mut ModuleExtras,
@@ -448,10 +511,40 @@ where
 
     fn on_timeout_packet_execute_inner(
         &mut self,
-        _extras: &mut ModuleExtras,
-        _packet: &Packet,
+        extras: &mut ModuleExtras,
+        packet: &Packet,
+        relayer: &Signer,
     ) -> Result<(), MiddlewareError> {
-        Ok(())
+        let transfer_pkt = decode_ics20_msg(packet)?;
+
+        match self.timeout_should_retry(packet)? {
+            RetryOutcome::GoAhead { inflight_packet } => {
+                let (next_extras, result) = self.next.on_timeout_packet_execute(packet, relayer);
+
+                join_module_extras(extras, next_extras);
+                result.map_err(|err| {
+                    MiddlewareError::Message(format!(
+                        "Failed to retry packet, while invoking \
+                         on_timeout_packet_execute: {err}"
+                    ))
+                })?;
+
+                self.retry_timeout(
+                    &packet.port_id_on_a,
+                    &packet.chan_id_on_a,
+                    transfer_pkt,
+                    inflight_packet,
+                )
+            }
+            RetryOutcome::MaxRetriesExceeded {
+                refund_sequence,
+                refund_port_id,
+                refund_channel_id,
+            } => Err(MiddlewareError::Message(format!(
+                "In-flight packet max retries exceeded, for packet with sequence \
+                     {refund_sequence} on {refund_port_id}/{refund_channel_id}"
+            ))),
+        }
     }
 }
 
@@ -517,7 +610,7 @@ where
     ) -> (ModuleExtras, Result<(), PacketError>) {
         let mut extras = ModuleExtras::empty();
 
-        match self.on_timeout_packet_execute_inner(&mut extras, packet) {
+        match self.on_timeout_packet_execute_inner(&mut extras, packet, relayer) {
             Ok(()) => (extras, Ok(())),
             Err(MiddlewareError::ForwardToNextMiddleware) => {
                 self.next.on_timeout_packet_execute(packet, relayer)
@@ -747,10 +840,12 @@ fn next_inflight_packet(
 ) -> InFlightPacket {
     if let Some(pkt) = inflight_packet {
         let retries_remaining = {
-            debug_assert!(pkt.retries_remaining.get() > 0);
-
-            NonZeroU8::new(pkt.retries_remaining.get().wrapping_sub(1))
-                .expect("Number of retries was asserted to be greater than zero")
+            NonZeroU8::new(
+                pkt.retries_remaining
+                    .expect("We should only hit this branch with at least one retry remaining")
+                    .get()
+                    .wrapping_sub(1),
+            )
         };
 
         InFlightPacket {
@@ -768,7 +863,7 @@ fn next_inflight_packet(
             packet_timeout_height: src_packet.timeout_height_on_b,
             packet_data: transfer_pkt,
             refund_sequence: src_packet.seq_on_a,
-            retries_remaining: retries,
+            retries_remaining: Some(retries),
             timeout: msg::Duration::from_dur(timeout),
         }
     }
