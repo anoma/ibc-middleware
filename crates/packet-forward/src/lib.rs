@@ -1023,7 +1023,7 @@ mod tests {
             forward: msg::ForwardMetadata {
                 receiver: String::from("receiver").into(),
                 port: PortId::transfer(),
-                channel: ChannelId::new(TARGET_CHANNEL),
+                channel: ChannelId::new(channels::BC),
                 timeout: None,
                 retries: None,
                 next: None,
@@ -1048,9 +1048,9 @@ mod tests {
         let first_inflight_packet = InFlightPacket {
             original_sender_address: String::new().into(),
             refund_port_id: PortId::transfer(),
-            refund_channel_id: ChannelId::new(TARGET_CHANNEL),
+            refund_channel_id: ChannelId::new(channels::BA),
             packet_src_port_id: PortId::transfer(),
-            packet_src_channel_id: ChannelId::new(SOURCE_CHANNEL),
+            packet_src_channel_id: ChannelId::new(channels::AB),
             packet_timeout_timestamp: TimeoutTimestamp::Never,
             packet_timeout_height: TimeoutHeight::Never,
             packet_data: get_dummy_packet_data(100),
@@ -1076,9 +1076,9 @@ mod tests {
         let packet = Packet {
             data: serde_json::to_vec(&packet_data).unwrap(),
             port_id_on_b: PortId::transfer(),
-            chan_id_on_b: ChannelId::new(TARGET_CHANNEL),
+            chan_id_on_b: ChannelId::new(channels::BA),
             port_id_on_a: PortId::transfer(),
-            chan_id_on_a: ChannelId::new(SOURCE_CHANNEL),
+            chan_id_on_a: ChannelId::new(channels::AB),
             timeout_height_on_b: TimeoutHeight::Never,
             timeout_timestamp_on_b: TimeoutTimestamp::Never,
             seq_on_a: 0u64.into(),
@@ -1095,9 +1095,9 @@ mod tests {
         let expected_inflight_packet = InFlightPacket {
             original_sender_address: String::new().into(),
             refund_port_id: PortId::transfer(),
-            refund_channel_id: ChannelId::new(TARGET_CHANNEL),
+            refund_channel_id: ChannelId::new(channels::BA),
             packet_src_port_id: PortId::transfer(),
-            packet_src_channel_id: ChannelId::new(SOURCE_CHANNEL),
+            packet_src_channel_id: ChannelId::new(channels::AB),
             packet_timeout_timestamp: TimeoutTimestamp::Never,
             packet_timeout_height: TimeoutHeight::Never,
             packet_data: get_dummy_packet_data(100),
@@ -1143,6 +1143,7 @@ mod tests {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod test_utils {
     use std::collections::HashMap;
 
@@ -1152,9 +1153,26 @@ mod test_utils {
 
     use super::*;
 
-    pub const SOURCE_CHANNEL: u64 = 2;
-    pub const TARGET_CHANNEL: u64 = 0;
-    pub const BASE_DENOM: &str = "ubongus";
+    // NOTE: Assume we have three chains: A, B, and C. The tests will be set
+    // up as if we were chain B, forwarding a packet from A to C.
+    pub mod channels {
+        // Outgoing channels from A.
+        pub const AB: u64 = 0;
+
+        // Outgoing channels from B.
+        pub const BA: u64 = 0;
+        pub const BC: u64 = 1;
+
+        // Outgoing channels from C.
+        pub const CB: u64 = 0;
+    }
+
+    pub mod base_denoms {
+        pub const A: &str = "uauauiua";
+        pub const B: &str = "ubongus";
+        pub const C: &str = "uchungus";
+    }
+
     pub const ESCROW_ACCOUNT: &str = "ics-ics20-escrow-account";
 
     pub struct Store<M> {
@@ -1272,8 +1290,11 @@ mod test_utils {
     }
 
     pub fn get_dummy_coin(amount: u64) -> Coin<PrefixedDenom> {
+        let chan_id = channels::AB;
+        let denom = base_denoms::B;
+
         Coin {
-            denom: format!("transfer/channel-{SOURCE_CHANNEL}/{BASE_DENOM}")
+            denom: format!("transfer/channel-{chan_id}/{denom}")
                 .parse()
                 .unwrap(),
             amount: amount.into(),
