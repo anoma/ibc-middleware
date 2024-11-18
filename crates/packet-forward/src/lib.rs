@@ -1137,7 +1137,7 @@ mod tests {
     #[test]
     fn events_kept_on_errors() {
         let mut pfm = get_dummy_pfm();
-        pfm.inject_failure(FailurePoint::SendTransferExecute);
+        pfm.inject_failure(FailurePoint::BeforeSendTransferExecute);
 
         let mut extras = ModuleExtras::empty();
 
@@ -1192,7 +1192,7 @@ mod tests {
         };
 
         assert_failure_injection(
-            FailurePoint::SendTransferExecute,
+            FailurePoint::BeforeSendTransferExecute,
             pfm.forward_transfer_packet(
                 &mut extras,
                 Left((&packet, packet_data)),
@@ -1243,7 +1243,8 @@ mod test_utils {
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     pub enum FailurePoint {
-        SendTransferExecute,
+        BeforeSendTransferExecute,
+        AfterSendTransferExecute,
     }
 
     #[derive(Debug)]
@@ -1482,9 +1483,10 @@ mod test_utils {
         type Error = String;
 
         fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<Sequence, Self::Error> {
-            self.check_failure_injection(FailurePoint::SendTransferExecute)?;
+            self.check_failure_injection(FailurePoint::BeforeSendTransferExecute)?;
             let seq = Sequence::from(self.sent_transfers.len() as u64);
             self.sent_transfers.push(msg);
+            self.check_failure_injection(FailurePoint::AfterSendTransferExecute)?;
             Ok(seq)
         }
 
