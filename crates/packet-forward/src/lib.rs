@@ -172,7 +172,6 @@ impl<M> PacketForwardMiddleware<M>
 where
     M: IbcCoreModule + PfmContext,
 {
-    #[allow(clippy::too_many_arguments)]
     fn forward_transfer_packet(
         &mut self,
         extras: &mut ModuleExtras,
