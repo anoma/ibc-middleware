@@ -976,7 +976,7 @@ mod tests {
     #[test]
     fn decode_ics20_msg_on_valid_ics20_data() {
         let expected_packet_data = get_dummy_packet_data(100);
-        let packet = get_dummy_packet_with_data(&expected_packet_data);
+        let packet = get_dummy_packet_with_data(0, &expected_packet_data);
 
         let got_packet_data = decode_ics20_msg(&packet).unwrap();
         assert_eq!(got_packet_data, expected_packet_data);
@@ -985,7 +985,7 @@ mod tests {
     #[test]
     fn decode_forward_msg_forwards_to_next_middleware_not_json() {
         let packet_data = get_dummy_packet_data_with_memo(100, "oh hi mark".to_owned());
-        let packet = get_dummy_packet_with_data(&packet_data);
+        let packet = get_dummy_packet_with_data(0, &packet_data);
 
         assert!(matches!(
             decode_forward_msg(&packet),
@@ -997,7 +997,7 @@ mod tests {
     fn decode_forward_msg_forwards_to_next_middleware_not_pfm_msg() {
         let packet_data =
             get_dummy_packet_data_with_memo(100, r#"{"combo": "breaker"}"#.to_owned());
-        let packet = get_dummy_packet_with_data(&packet_data);
+        let packet = get_dummy_packet_with_data(0, &packet_data);
 
         assert!(matches!(
             decode_forward_msg(&packet),
@@ -1009,7 +1009,7 @@ mod tests {
     fn decode_forward_msg_failure() {
         let packet_data =
             get_dummy_packet_data_with_memo(100, r#"{"forward": {"foot": "best"}}"#.to_owned());
-        let packet = get_dummy_packet_with_data(&packet_data);
+        let packet = get_dummy_packet_with_data(0, &packet_data);
 
         assert!(matches!(
             decode_forward_msg(&packet),
@@ -1020,21 +1020,14 @@ mod tests {
     #[test]
     fn decode_forward_msg_success() {
         let expected_fwd_metadata = msg::PacketMetadata {
-            forward: msg::ForwardMetadata {
-                receiver: String::from("receiver").into(),
-                port: PortId::transfer(),
-                channel: ChannelId::new(channels::BC),
-                timeout: None,
-                retries: None,
-                next: None,
-            },
+            forward: get_dummy_fwd_metadata(),
         };
         let expected_packet_data = get_dummy_packet_data_with_memo(
             100,
             serde_json::to_string(&expected_fwd_metadata).unwrap(),
         );
 
-        let packet = get_dummy_packet_with_data(&expected_packet_data);
+        let packet = get_dummy_packet_with_data(0, &expected_packet_data);
         let (got_packet_data, got_fwd_metadata) = decode_forward_msg(&packet).unwrap();
 
         assert_eq!(expected_packet_data, got_packet_data);
@@ -1140,16 +1133,89 @@ mod tests {
             ["1", "2"]
         );
     }
+
+    #[test]
+    fn events_kept_on_errors() {
+        let mut pfm = get_dummy_pfm();
+
+        let mut extras = ModuleExtras::empty();
+        pfm.next
+            .failure_injections
+            .insert(FailurePoint::SendTransferExecute);
+
+        let packet_data = get_dummy_packet_data(100);
+        let packet = get_dummy_packet_with_data(0, &packet_data);
+        let fwd_metadata = get_dummy_fwd_metadata();
+
+        let denom_on_this_chain = pfm
+            .next
+            .get_denom_for_this_chain(
+                &packet.port_id_on_b,
+                &packet.chan_id_on_b,
+                &packet.port_id_on_a,
+                &packet.chan_id_on_a,
+                &packet_data.token.denom,
+            )
+            .unwrap();
+        let coin_on_this_chain = Coin {
+            denom: denom_on_this_chain,
+            amount: packet_data.token.amount,
+        };
+
+        let expected_extras = {
+            let mut ex = ModuleExtras::empty();
+            emit_event_with_attrs(&mut ex, {
+                let mut attributes = Vec::with_capacity(8);
+                push_event_attr(&mut attributes, "is-retry".to_owned(), false.to_string());
+                push_event_attr(
+                    &mut attributes,
+                    "escrow-account".to_owned(),
+                    "Barbara".to_string(),
+                );
+                push_event_attr(&mut attributes, "sender".to_owned(), "Bob".to_string());
+                push_event_attr(
+                    &mut attributes,
+                    "receiver".to_owned(),
+                    fwd_metadata.receiver.to_string(),
+                );
+                push_event_attr(
+                    &mut attributes,
+                    "port".to_owned(),
+                    fwd_metadata.port.to_string(),
+                );
+                push_event_attr(
+                    &mut attributes,
+                    "channel".to_owned(),
+                    fwd_metadata.channel.to_string(),
+                );
+                attributes
+            });
+            ex
+        };
+
+        assert!(pfm
+            .forward_transfer_packet(
+                &mut extras,
+                Left((&packet, packet_data)),
+                fwd_metadata,
+                String::from("Bob").into(),
+                String::from("Barbara").into(),
+                coin_on_this_chain,
+            )
+            .is_err());
+
+        assert_eq!(extras.log, expected_extras.log);
+        assert_eq!(extras.events, expected_extras.events);
+    }
 }
 
 #[cfg(test)]
 #[allow(dead_code)]
 mod test_utils {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use ibc_app_transfer_types::{TracePath, TracePrefix};
     use ibc_primitives::Timestamp;
-    use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
     use ibc_testkit::testapp::ibc::applications::transfer::types::DummyTransferModule;
 
     use super::*;
@@ -1176,6 +1242,11 @@ mod test_utils {
 
     pub const ESCROW_ACCOUNT: &str = "ics-ics20-escrow-account";
 
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    pub enum FailurePoint {
+        SendTransferExecute,
+    }
+
     #[derive(Debug)]
     pub struct Store<M> {
         middleware: M,
@@ -1184,6 +1255,7 @@ mod test_utils {
         pub refunds_received: Vec<(Packet, PacketData)>,
         pub refunds_sent: Vec<InFlightPacket>,
         pub ack_and_events_written: Vec<(Packet, Acknowledgement)>,
+        pub failure_injections: HashSet<FailurePoint>,
     }
 
     impl<M> Store<M> {
@@ -1195,6 +1267,15 @@ mod test_utils {
                 refunds_received: Vec::new(),
                 refunds_sent: Vec::new(),
                 ack_and_events_written: Vec::new(),
+                failure_injections: HashSet::new(),
+            }
+        }
+
+        fn check_failure_injection(&self, point: FailurePoint) -> Result<(), String> {
+            if !self.failure_injections.contains(&point) {
+                Ok(())
+            } else {
+                Err(failure_injection_err_msg(point))
             }
         }
     }
@@ -1402,6 +1483,7 @@ mod test_utils {
         type Error = String;
 
         fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<Sequence, Self::Error> {
+            self.check_failure_injection(FailurePoint::SendTransferExecute)?;
             let seq = Sequence::from(self.sent_transfers.len() as u64);
             self.sent_transfers.push(msg);
             Ok(seq)
@@ -1539,6 +1621,10 @@ mod test_utils {
         }
     }
 
+    fn failure_injection_err_msg(point: FailurePoint) -> String {
+        format!("Failure injection on {point:?}")
+    }
+
     pub fn get_dummy_pfm() -> PacketForwardMiddleware<Store<DummyTransferModule>> {
         PacketForwardMiddleware::next(Store::new(DummyTransferModule::new()))
     }
@@ -1568,10 +1654,28 @@ mod test_utils {
         get_dummy_packet_data_with_memo(transfer_amount, String::new())
     }
 
-    pub fn get_dummy_packet_with_data(packet_data: &PacketData) -> Packet {
-        let mut p: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
-        p.data = serde_json::to_vec(packet_data).unwrap();
-        p
+    pub fn get_dummy_packet_with_data(seq: u64, packet_data: &PacketData) -> Packet {
+        Packet {
+            data: serde_json::to_vec(packet_data).unwrap(),
+            seq_on_a: seq.into(),
+            port_id_on_a: PortId::transfer(),
+            chan_id_on_a: ChannelId::new(channels::AB),
+            port_id_on_b: PortId::transfer(),
+            chan_id_on_b: ChannelId::new(channels::BA),
+            timeout_height_on_b: TimeoutHeight::Never,
+            timeout_timestamp_on_b: TimeoutTimestamp::Never,
+        }
+    }
+
+    pub fn get_dummy_fwd_metadata() -> msg::ForwardMetadata {
+        msg::ForwardMetadata {
+            receiver: String::from("receiver").into(),
+            port: PortId::transfer(),
+            channel: ChannelId::new(channels::BC),
+            timeout: None,
+            retries: None,
+            next: None,
+        }
     }
 
     #[test]
