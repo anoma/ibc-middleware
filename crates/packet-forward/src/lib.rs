@@ -961,39 +961,7 @@ fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventA
 mod tests {
     use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
 
-    use super::*;
-
-    const SOURCE_CHANNEL: u64 = 2;
-    const TARGET_CHANNEL: u64 = 0;
-    const BASE_DENOM: &str = "ubongus";
-
-    fn get_dummy_coin(amount: u64) -> Coin<PrefixedDenom> {
-        Coin {
-            denom: format!("transfer/channel-{SOURCE_CHANNEL}/{BASE_DENOM}")
-                .parse()
-                .unwrap(),
-            amount: amount.into(),
-        }
-    }
-
-    fn get_dummy_packet_data_with_memo(transfer_amount: u64, memo: String) -> PacketData {
-        PacketData {
-            sender: String::new().into(),
-            receiver: String::new().into(),
-            token: get_dummy_coin(transfer_amount),
-            memo: memo.into(),
-        }
-    }
-
-    fn get_dummy_packet_data(transfer_amount: u64) -> PacketData {
-        get_dummy_packet_data_with_memo(transfer_amount, String::new())
-    }
-
-    fn get_dummy_packet_with_data(packet_data: &PacketData) -> Packet {
-        let mut p: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
-        p.data = serde_json::to_vec(packet_data).unwrap();
-        p
-    }
+    use super::{test_utils::*, *};
 
     #[test]
     fn decode_ics20_msg_forwards_to_next_middleware() {
@@ -1171,5 +1139,163 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["1", "2"]
         );
+    }
+}
+
+#[cfg(test)]
+mod test_utils {
+    use std::collections::HashMap;
+
+    use ibc_primitives::Timestamp;
+    use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
+    use ibc_testkit::testapp::ibc::applications::transfer::types::DummyTransferModule;
+
+    use super::*;
+
+    pub const SOURCE_CHANNEL: u64 = 2;
+    pub const TARGET_CHANNEL: u64 = 0;
+    pub const BASE_DENOM: &str = "ubongus";
+    pub const ESCROW_ACCOUNT: &str = "ics-ics20-escrow-account";
+
+    pub struct Store<M> {
+        middleware: M,
+        pub inflight_packet_store: HashMap<InFlightPacketKey, InFlightPacket>,
+        pub sent_transfers: Vec<MsgTransfer>,
+        pub refunds_received: Vec<(Packet, PacketData)>,
+        pub refunds_sent: Vec<InFlightPacket>,
+        pub ack_and_events_written: Vec<(Packet, Acknowledgement)>,
+    }
+
+    impl<M> Store<M> {
+        pub fn new(middleware: M) -> Self {
+            Self {
+                middleware,
+                inflight_packet_store: HashMap::new(),
+                sent_transfers: Vec::new(),
+                refunds_received: Vec::new(),
+                refunds_sent: Vec::new(),
+                ack_and_events_written: Vec::new(),
+            }
+        }
+    }
+
+    impl<M> PfmContext for Store<M> {
+        type Error = String;
+
+        fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<Sequence, Self::Error> {
+            let seq = Sequence::from(self.sent_transfers.len() as u64);
+            self.sent_transfers.push(msg);
+            Ok(seq)
+        }
+
+        fn receive_refund_execute(
+            &mut self,
+            packet: &Packet,
+            transfer_pkt: PacketData,
+        ) -> Result<(), Self::Error> {
+            self.refunds_received.push((packet.clone(), transfer_pkt));
+            Ok(())
+        }
+
+        fn send_refund_execute(
+            &mut self,
+            inflight_packet: &InFlightPacket,
+        ) -> Result<(), Self::Error> {
+            self.refunds_sent.push(inflight_packet.clone());
+            Ok(())
+        }
+
+        fn write_ack_and_events(
+            &mut self,
+            packet: &Packet,
+            acknowledgement: &Acknowledgement,
+        ) -> Result<(), Self::Error> {
+            self.ack_and_events_written
+                .push((packet.clone(), acknowledgement.clone()));
+            Ok(())
+        }
+
+        fn override_receiver(
+            &self,
+            _channel: &ChannelId,
+            _original_sender: &Signer,
+        ) -> Result<Signer, Self::Error> {
+            Ok(ESCROW_ACCOUNT.to_string().into())
+        }
+
+        fn timeout_timestamp(
+            &self,
+            timeout_duration: dur::Duration,
+        ) -> Result<TimeoutTimestamp, Self::Error> {
+            let nanos: u64 = timeout_duration.as_nanos().try_into().map_err(|e| {
+                format!("Could not convert duration {timeout_duration} to u64 nanos: {e}")
+            })?;
+
+            Ok(TimeoutTimestamp::At(Timestamp::from_nanoseconds(nanos)))
+        }
+
+        fn store_inflight_packet(
+            &mut self,
+            key: InFlightPacketKey,
+            inflight_packet: InFlightPacket,
+        ) -> Result<(), Self::Error> {
+            self.inflight_packet_store.insert(key, inflight_packet);
+            Ok(())
+        }
+
+        fn retrieve_inflight_packet(
+            &self,
+            key: &InFlightPacketKey,
+        ) -> Result<Option<InFlightPacket>, Self::Error> {
+            Ok(self.inflight_packet_store.get(key).cloned())
+        }
+
+        fn delete_inflight_packet(&mut self, key: &InFlightPacketKey) -> Result<(), Self::Error> {
+            self.inflight_packet_store.remove(key);
+            Ok(())
+        }
+
+        fn get_denom_for_this_chain(
+            &self,
+            _this_chain_port: &PortId,
+            _this_chain_chan: &ChannelId,
+            _source_port: &PortId,
+            _source_chan: &ChannelId,
+            _source_denom: &PrefixedDenom,
+        ) -> Result<PrefixedDenom, Self::Error> {
+            todo!()
+        }
+    }
+
+    pub fn get_dummy_pfm() -> PacketForwardMiddleware<Store<DummyTransferModule>> {
+        PacketForwardMiddleware::next(Store::new(DummyTransferModule::new()))
+    }
+
+    pub fn get_dummy_coin(amount: u64) -> Coin<PrefixedDenom> {
+        Coin {
+            denom: format!("transfer/channel-{SOURCE_CHANNEL}/{BASE_DENOM}")
+                .parse()
+                .unwrap(),
+            amount: amount.into(),
+        }
+    }
+
+    pub fn get_dummy_packet_data_with_memo(transfer_amount: u64, memo: String) -> PacketData {
+        PacketData {
+            sender: String::new().into(),
+            receiver: String::new().into(),
+            token: get_dummy_coin(transfer_amount),
+            memo: memo.into(),
+        }
+    }
+
+    pub fn get_dummy_packet_data(transfer_amount: u64) -> PacketData {
+        get_dummy_packet_data_with_memo(transfer_amount, String::new())
+    }
+
+    pub fn get_dummy_packet_with_data(packet_data: &PacketData) -> Packet {
+        let mut p: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
+        p.data = serde_json::to_vec(packet_data).unwrap();
+        p
     }
 }
