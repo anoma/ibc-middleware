@@ -36,6 +36,8 @@ pub use self::msg::Duration;
 #[doc(inline)]
 pub use self::state::{InFlightPacket, InFlightPacketKey};
 
+pub type RetryInFlightPacket = InFlightPacket;
+
 struct NewInFlightPacket<'pkt> {
     src_packet: &'pkt Packet,
     transfer_pkt: PacketData,
@@ -172,7 +174,7 @@ where
     fn forward_transfer_packet(
         &mut self,
         extras: &mut ModuleExtras,
-        packet: Either<(&Packet, PacketData), InFlightPacket>,
+        packet: Either<(&Packet, PacketData), RetryInFlightPacket>,
         fwd_metadata: msg::ForwardMetadata,
         original_sender: Signer,
         override_receiver: Signer,
@@ -895,7 +897,9 @@ fn join_module_extras(first: &mut ModuleExtras, mut second: ModuleExtras) {
     first.log.append(&mut second.log);
 }
 
-fn next_inflight_packet(packet: Either<NewInFlightPacket<'_>, InFlightPacket>) -> InFlightPacket {
+fn next_inflight_packet(
+    packet: Either<NewInFlightPacket<'_>, RetryInFlightPacket>,
+) -> InFlightPacket {
     packet.either(
         |NewInFlightPacket {
              src_packet,
@@ -927,7 +931,7 @@ fn next_inflight_packet(packet: Either<NewInFlightPacket<'_>, InFlightPacket>) -
                 )
             };
 
-            InFlightPacket {
+            RetryInFlightPacket {
                 retries_remaining,
                 ..inflight_packet
             }
