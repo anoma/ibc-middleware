@@ -51,6 +51,7 @@ enum RetryOutcome {
     MaxRetriesExceeded,
 }
 
+#[derive(Debug)]
 enum MiddlewareError {
     /// Error message.
     Message(String),
@@ -954,6 +955,8 @@ fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventA
 
 #[cfg(test)]
 mod tests {
+    use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
+
     use super::*;
 
     const SOURCE_CHANNEL: u64 = 2;
@@ -976,6 +979,29 @@ mod tests {
             token: get_dummy_coin(transfer_amount),
             memo: String::new().into(),
         }
+    }
+
+    #[test]
+    fn decode_ics20_msg_forwards_to_next_middleware() {
+        // NB: this packet doesn't have ICS-20 packet data
+        let packet: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
+        assert!(matches!(
+            decode_ics20_msg(&packet),
+            Err(MiddlewareError::ForwardToNextMiddleware)
+        ));
+    }
+
+    #[test]
+    fn decode_ics20_msg_on_valid_ics20_data() {
+        let expected_packet_data = get_dummy_packet_data(100);
+        let packet = {
+            let mut p: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
+            p.data = serde_json::to_vec(&expected_packet_data).unwrap();
+            p
+        };
+
+        let got_packet_data = decode_ics20_msg(&packet).unwrap();
+        assert_eq!(got_packet_data, expected_packet_data);
     }
 
     #[test]
