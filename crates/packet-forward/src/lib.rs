@@ -1137,11 +1137,9 @@ mod tests {
     #[test]
     fn events_kept_on_errors() {
         let mut pfm = get_dummy_pfm();
+        pfm.inject_failure(FailurePoint::SendTransferExecute);
 
         let mut extras = ModuleExtras::empty();
-        pfm.next
-            .failure_injections
-            .insert(FailurePoint::SendTransferExecute);
 
         let packet_data = get_dummy_packet_data(100);
         let packet = get_dummy_packet_with_data(0, &packet_data);
@@ -1251,12 +1249,12 @@ mod test_utils {
     #[derive(Debug)]
     pub struct Store<M> {
         middleware: M,
+        failure_injections: HashSet<FailurePoint>,
         pub inflight_packet_store: HashMap<InFlightPacketKey, InFlightPacket>,
         pub sent_transfers: Vec<MsgTransfer>,
         pub refunds_received: Vec<(Packet, PacketData)>,
         pub refunds_sent: Vec<InFlightPacket>,
         pub ack_and_events_written: Vec<(Packet, Acknowledgement)>,
-        pub failure_injections: HashSet<FailurePoint>,
     }
 
     impl<M> Store<M> {
@@ -1619,6 +1617,12 @@ mod test_utils {
                     },
                 })
             }
+        }
+    }
+
+    impl<M> PacketForwardMiddleware<Store<M>> {
+        pub fn inject_failure(&mut self, point: FailurePoint) {
+            self.next.failure_injections.insert(point);
         }
     }
 
