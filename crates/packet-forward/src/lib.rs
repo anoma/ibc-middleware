@@ -934,3 +934,102 @@ fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventA
         attributes,
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SOURCE_CHANNEL: u64 = 2;
+    const TARGET_CHANNEL: u64 = 0;
+    const BASE_DENOM: &str = "ubongus";
+
+    fn get_dummy_coin(amount: u64) -> Coin<PrefixedDenom> {
+        Coin {
+            denom: format!("transfer/channel-{SOURCE_CHANNEL}/{BASE_DENOM}")
+                .parse()
+                .unwrap(),
+            amount: amount.into(),
+        }
+    }
+
+    fn get_dummy_packet_data(transfer_amount: u64) -> PacketData {
+        PacketData {
+            sender: String::new().into(),
+            receiver: String::new().into(),
+            token: get_dummy_coin(transfer_amount),
+            memo: String::new().into(),
+        }
+    }
+
+    #[test]
+    fn next_inflight_packet_decreases_retries() {
+        let retries = NonZeroU8::new(2).unwrap();
+
+        let first_inflight_packet = InFlightPacket {
+            original_sender_address: String::new().into(),
+            refund_port_id: PortId::transfer(),
+            refund_channel_id: ChannelId::new(TARGET_CHANNEL),
+            packet_src_port_id: PortId::transfer(),
+            packet_src_channel_id: ChannelId::new(SOURCE_CHANNEL),
+            packet_timeout_timestamp: TimeoutTimestamp::Never,
+            packet_timeout_height: TimeoutHeight::Never,
+            packet_data: get_dummy_packet_data(100),
+            refund_sequence: 0u64.into(),
+            retries_remaining: Some(retries),
+            timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
+        };
+
+        let mut second_inflight_packet = next_inflight_packet(
+            Right(first_inflight_packet.clone()),
+            String::new().into(),
+            retries,
+            DEFAULT_FORWARD_TIMEOUT,
+        );
+
+        second_inflight_packet.retries_remaining = second_inflight_packet
+            .retries_remaining
+            .as_mut()
+            .unwrap()
+            .checked_add(1);
+
+        assert_eq!(first_inflight_packet, second_inflight_packet);
+    }
+
+    #[test]
+    fn next_inflight_packet_from_packet() {
+        let packet_data = get_dummy_packet_data(100);
+        let packet = Packet {
+            data: serde_json::to_vec(&packet_data).unwrap(),
+            port_id_on_b: PortId::transfer(),
+            chan_id_on_b: ChannelId::new(TARGET_CHANNEL),
+            port_id_on_a: PortId::transfer(),
+            chan_id_on_a: ChannelId::new(SOURCE_CHANNEL),
+            timeout_height_on_b: TimeoutHeight::Never,
+            timeout_timestamp_on_b: TimeoutTimestamp::Never,
+            seq_on_a: 0u64.into(),
+        };
+
+        let got_inflight_packet = next_inflight_packet(
+            Left((&packet, packet_data)),
+            String::new().into(),
+            DEFAULT_FORWARD_RETRIES,
+            DEFAULT_FORWARD_TIMEOUT,
+        );
+
+        let expected_inflight_packet = InFlightPacket {
+            original_sender_address: String::new().into(),
+            refund_port_id: PortId::transfer(),
+            refund_channel_id: ChannelId::new(TARGET_CHANNEL),
+            packet_src_port_id: PortId::transfer(),
+            packet_src_channel_id: ChannelId::new(SOURCE_CHANNEL),
+            packet_timeout_timestamp: TimeoutTimestamp::Never,
+            packet_timeout_height: TimeoutHeight::Never,
+            packet_data: get_dummy_packet_data(100),
+            refund_sequence: 0u64.into(),
+            retries_remaining: Some(DEFAULT_FORWARD_RETRIES),
+            timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
+        };
+
+        assert_eq!(got_inflight_packet, expected_inflight_packet);
+    }
+}
