@@ -40,7 +40,7 @@ pub struct ForwardMetadata {
     /// another [`ForwardMetadata`] structure, along with
     /// any additional middleware callbacks.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub next: Option<serde_json::Map<String, serde_json::Value>>,
+    pub next: Option<String>,
 }
 
 fn deserialize_non_empty_signer<'de, D>(deserializer: D) -> Result<Signer, D::Error>
@@ -88,28 +88,28 @@ mod duration {
         dur::Duration,
     );
 
-    impl From<f64> for F64Dur {
-        fn from(dur: f64) -> Self {
+    impl From<u64> for U64Dur {
+        fn from(dur: u64) -> Self {
             Self(DurrDerp(dur::Duration::from_nanos(dur as u128)))
         }
     }
 
     #[derive(Debug, Serialize, Deserialize)]
-    #[serde(from = "f64")]
-    struct F64Dur(DurrDerp);
+    #[serde(from = "u64")]
+    struct U64Dur(DurrDerp);
 
     #[derive(Debug, Serialize, Deserialize)]
     #[serde(untagged)]
     enum AllDuration {
         Dur(DurrDerp),
-        F64(F64Dur),
+        U64(U64Dur),
     }
 
     impl From<AllDuration> for Duration {
         fn from(dur: AllDuration) -> Self {
             match dur {
                 AllDuration::Dur(DurrDerp(dur)) => Self(dur),
-                AllDuration::F64(F64Dur(DurrDerp(dur))) => Self(dur),
+                AllDuration::U64(U64Dur(DurrDerp(dur))) => Self(dur),
             }
         }
     }
@@ -136,16 +136,16 @@ mod tests {
     #[test]
     fn duration_serde_roundtrip_parsing() {
         const DUR_STR: &str = "\"1m5s\"";
-        const DUR_F64: &str = "1.2345";
+        const DUR_U64: &str = "1";
 
         let expected_from_str = Duration(dur::Duration::from_secs(65));
-        let expected_from_f64 = Duration(dur::Duration::from_nanos(1));
+        let expected_from_u64 = Duration(dur::Duration::from_nanos(1));
 
         let parsed: Duration = serde_json::from_str(DUR_STR).unwrap();
         assert_eq!(parsed, expected_from_str);
 
-        let parsed: Duration = serde_json::from_str(DUR_F64).unwrap();
-        assert_eq!(parsed, expected_from_f64);
+        let parsed: Duration = serde_json::from_str(DUR_U64).unwrap();
+        assert_eq!(parsed, expected_from_u64);
     }
 
     #[test]
@@ -217,13 +217,7 @@ mod tests {
                         "channel": "channel-1180",
                         "port": "transfer",
                         "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt",
-                        "next": {
-                            "forward": {
-                                "receiver": "noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv",
-                                "channel": "channel-1181",
-                                "port": "transfer"
-                            }
-                        }
+                        "next": "{\"forward\":{\"receiver\":\"noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv\",\"channel\":\"channel-1181\",\"port\":\"transfer\"}}"
                       }
                     }
                 "#,
@@ -236,25 +230,10 @@ mod tests {
                         channel: ChannelId::new(1180),
                         timeout: None,
                         retries: None,
-                        next: Some(serde_json::Map::from_iter([(
-                            "forward".to_owned(),
-                            serde_json::Value::Object(serde_json::Map::from_iter([
-                                (
-                                    "receiver".to_owned(),
-                                    serde_json::Value::String(
-                                        "noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv".to_owned(),
-                                    ),
-                                ),
-                                (
-                                    "channel".to_owned(),
-                                    serde_json::Value::String("channel-1181".to_owned()),
-                                ),
-                                (
-                                    "port".to_owned(),
-                                    serde_json::Value::String("transfer".to_owned()),
-                                ),
-                            ])),
-                        )])),
+                        next: Some(
+                            "{\"forward\":{\"receiver\":\"noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv\",\
+                             \"channel\":\"channel-1181\",\"port\":\"transfer\"}}".to_string(),
+                        ),
                     },
                 }),
             },

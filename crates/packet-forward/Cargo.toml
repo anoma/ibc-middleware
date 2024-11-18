@@ -22,6 +22,7 @@ ibc-core-router.workspace = true
 ibc-primitives.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+zjson.workspace = true
 
 [dev-dependencies]
 ibc-testkit.workspace = true
