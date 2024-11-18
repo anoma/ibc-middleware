@@ -36,6 +36,14 @@ pub use self::msg::Duration;
 #[doc(inline)]
 pub use self::state::{InFlightPacket, InFlightPacketKey};
 
+struct NewInFlightPacket<'pkt> {
+    src_packet: &'pkt Packet,
+    transfer_pkt: PacketData,
+    original_sender: Signer,
+    retries: NonZeroU8,
+    timeout: dur::Duration,
+}
+
 enum RetryOutcome {
     /// We should retry submitting the in-flight packet.
     GoAhead,
@@ -254,7 +262,15 @@ where
                     channel: fwd_metadata.channel,
                     sequence,
                 },
-                next_inflight_packet(packet, original_sender, retries, timeout),
+                next_inflight_packet(packet.map_left(|(src_packet, transfer_pkt)| {
+                    NewInFlightPacket {
+                        src_packet,
+                        transfer_pkt,
+                        original_sender,
+                        retries,
+                        timeout,
+                    }
+                })),
             )
             .map_err(|err| {
                 MiddlewareError::Message(format!("Failed to store in-flight packet: {err}"))
@@ -878,14 +894,15 @@ fn join_module_extras(first: &mut ModuleExtras, mut second: ModuleExtras) {
     first.log.append(&mut second.log);
 }
 
-fn next_inflight_packet(
-    packet: Either<(&Packet, PacketData), InFlightPacket>,
-    original_sender: Signer,
-    retries: NonZeroU8,
-    timeout: dur::Duration,
-) -> InFlightPacket {
+fn next_inflight_packet(packet: Either<NewInFlightPacket<'_>, InFlightPacket>) -> InFlightPacket {
     packet.either(
-        |(src_packet, transfer_pkt)| InFlightPacket {
+        |NewInFlightPacket {
+             src_packet,
+             transfer_pkt,
+             original_sender,
+             retries,
+             timeout,
+         }| InFlightPacket {
             original_sender_address: original_sender,
             refund_port_id: src_packet.port_id_on_b.clone(),
             refund_channel_id: src_packet.chan_id_on_b.clone(),
@@ -979,12 +996,7 @@ mod tests {
             timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
         };
 
-        let mut second_inflight_packet = next_inflight_packet(
-            Right(first_inflight_packet.clone()),
-            String::new().into(),
-            retries,
-            DEFAULT_FORWARD_TIMEOUT,
-        );
+        let mut second_inflight_packet = next_inflight_packet(Right(first_inflight_packet.clone()));
 
         second_inflight_packet.retries_remaining = second_inflight_packet
             .retries_remaining
@@ -1009,12 +1021,13 @@ mod tests {
             seq_on_a: 0u64.into(),
         };
 
-        let got_inflight_packet = next_inflight_packet(
-            Left((&packet, packet_data)),
-            String::new().into(),
-            DEFAULT_FORWARD_RETRIES,
-            DEFAULT_FORWARD_TIMEOUT,
-        );
+        let got_inflight_packet = next_inflight_packet(Left(NewInFlightPacket {
+            src_packet: &packet,
+            transfer_pkt: packet_data,
+            original_sender: String::new().into(),
+            retries: DEFAULT_FORWARD_RETRIES,
+            timeout: DEFAULT_FORWARD_TIMEOUT,
+        }));
 
         let expected_inflight_packet = InFlightPacket {
             original_sender_address: String::new().into(),
