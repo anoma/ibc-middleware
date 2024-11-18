@@ -178,7 +178,7 @@ fn module_extras_appending() {
 #[test]
 fn events_kept_on_errors() {
     let mut pfm = get_dummy_pfm();
-    pfm.inject_failure(FailurePoint::BeforeSendTransferExecute);
+    pfm.inject_failure(FailurePoint::BeforeSendTransfer);
 
     let mut extras = ModuleExtras::empty();
 
@@ -233,7 +233,7 @@ fn events_kept_on_errors() {
     };
 
     assert_failure_injection(
-        FailurePoint::BeforeSendTransferExecute,
+        FailurePoint::BeforeSendTransfer,
         pfm.forward_transfer_packet(
             &mut extras,
             Left((&packet, packet_data)),
@@ -246,4 +246,22 @@ fn events_kept_on_errors() {
 
     assert_eq!(extras.log, expected_extras.log);
     assert_eq!(extras.events, expected_extras.events);
+}
+
+#[test]
+fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
+    let mut pfm = get_dummy_pfm();
+    let mut extras = ModuleExtras::empty();
+
+    let packet_data = get_dummy_packet_data_with_fwd_meta(
+        100,
+        msg::PacketMetadata {
+            forward: get_dummy_fwd_metadata(),
+        },
+    );
+    let packet = get_dummy_packet_with_data(0, &packet_data);
+
+    pfm.on_recv_packet_execute_inner(&mut extras, &packet, &String::from("relayer").into())?;
+
+    panic!("{extras:#?}\n{pfm:#?}");
 }

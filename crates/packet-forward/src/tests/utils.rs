@@ -27,12 +27,16 @@ pub mod base_denoms {
     pub const C: &str = "uchungus";
 }
 
-pub const ESCROW_ACCOUNT: &str = "ics-ics20-escrow-account";
+pub const ESCROW_ACCOUNT: &str = "ibc-ics20-escrow-account";
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FailurePoint {
-    BeforeSendTransferExecute,
-    AfterSendTransferExecute,
+    BeforeSendTransfer,
+    AfterSendTransfer,
+    BeforeNextMiddlewareOnRecvPacket,
+    AfterNextMiddlewareOnRecvPacket,
+    BeforeStoreInFlightPacket,
+    AfterStoreInFlightPacket,
 }
 
 #[derive(Debug)]
@@ -77,7 +81,36 @@ where
         packet: &Packet,
         relayer: &Signer,
     ) -> (ModuleExtras, Option<Acknowledgement>) {
-        self.middleware.on_recv_packet_execute(packet, relayer)
+        if let Err(err) =
+            self.check_failure_injection(FailurePoint::BeforeNextMiddlewareOnRecvPacket)
+        {
+            return (
+                ModuleExtras::empty(),
+                Some(crate::new_error_ack(err).into()),
+            );
+        }
+
+        let (extras, maybe_ack) = self.middleware.on_recv_packet_execute(packet, relayer);
+
+        if let Err(err) =
+            self.check_failure_injection(FailurePoint::AfterNextMiddlewareOnRecvPacket)
+        {
+            return (
+                ModuleExtras::empty(),
+                Some(crate::new_error_ack(err).into()),
+            );
+        }
+
+        (
+            extras,
+            maybe_ack.map(|ack| {
+                if ack.as_bytes() == [1] {
+                    Acknowledgement::try_from(br#"{"result": "great success"}"#.to_vec()).unwrap()
+                } else {
+                    Acknowledgement::try_from(br#"{"error": "oh no"}"#.to_vec()).unwrap()
+                }
+            }),
+        )
     }
 
     fn on_acknowledgement_packet_validate(
@@ -271,10 +304,10 @@ impl<M> PfmContext for Store<M> {
     type Error = String;
 
     fn send_transfer_execute(&mut self, msg: MsgTransfer) -> Result<Sequence, Self::Error> {
-        self.check_failure_injection(FailurePoint::BeforeSendTransferExecute)?;
+        self.check_failure_injection(FailurePoint::BeforeSendTransfer)?;
         let seq = Sequence::from(self.sent_transfers.len() as u64);
         self.sent_transfers.push(msg);
-        self.check_failure_injection(FailurePoint::AfterSendTransferExecute)?;
+        self.check_failure_injection(FailurePoint::AfterSendTransfer)?;
         Ok(seq)
     }
 
@@ -326,7 +359,9 @@ impl<M> PfmContext for Store<M> {
         key: InFlightPacketKey,
         inflight_packet: InFlightPacket,
     ) -> Result<(), Self::Error> {
+        self.check_failure_injection(FailurePoint::BeforeStoreInFlightPacket)?;
         self.inflight_packet_store.insert(key, inflight_packet);
+        self.check_failure_injection(FailurePoint::AfterStoreInFlightPacket)?;
         Ok(())
     }
 
@@ -438,8 +473,8 @@ pub fn assert_failure_injection<T>(point: FailurePoint, result: Result<T, Middle
     let Some((_, got_failure_point_err_msg)) = error_msg.rsplit_once(": ") else {
         panic!(
             "Panicked from {caller} due to failure injection \
-                 assertion: Expected {point:?}, but the error was \
-                 different: {error_msg}"
+                 assertion: Expected {point:?} related error, \
+                 but got this error instead: {error_msg}"
         );
     };
 
@@ -447,7 +482,7 @@ pub fn assert_failure_injection<T>(point: FailurePoint, result: Result<T, Middle
         panic!(
             "Panicked from {caller} due to failure injection \
                  assertion: Expected {point:?}, but the error was \
-                 different: {got_failure_point_err_msg}"
+                 different: {error_msg}"
         );
     }
 }
@@ -472,10 +507,17 @@ pub fn get_dummy_coin(amount: u64) -> Coin<PrefixedDenom> {
     }
 }
 
+pub fn get_dummy_packet_data_with_fwd_meta(
+    transfer_amount: u64,
+    meta: msg::PacketMetadata,
+) -> PacketData {
+    get_dummy_packet_data_with_memo(transfer_amount, serde_json::to_string(&meta).unwrap())
+}
+
 pub fn get_dummy_packet_data_with_memo(transfer_amount: u64, memo: String) -> PacketData {
     PacketData {
-        sender: String::new().into(),
-        receiver: String::new().into(),
+        sender: String::from("PACKET-SENDER").into(),
+        receiver: String::from("PACKET-RECEIVER").into(),
         token: get_dummy_coin(transfer_amount),
         memo: memo.into(),
     }
@@ -500,7 +542,7 @@ pub fn get_dummy_packet_with_data(seq: u64, packet_data: &PacketData) -> Packet 
 
 pub fn get_dummy_fwd_metadata() -> msg::ForwardMetadata {
     msg::ForwardMetadata {
-        receiver: String::from("receiver").into(),
+        receiver: String::from("receiver-on-c").into(),
         port: PortId::transfer(),
         channel: ChannelId::new(channels::BC),
         timeout: None,
