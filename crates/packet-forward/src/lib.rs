@@ -1193,16 +1193,17 @@ mod tests {
             ex
         };
 
-        assert!(pfm
-            .forward_transfer_packet(
+        assert_failure_injection(
+            FailurePoint::SendTransferExecute,
+            pfm.forward_transfer_packet(
                 &mut extras,
                 Left((&packet, packet_data)),
                 fwd_metadata,
                 String::from("Bob").into(),
                 String::from("Barbara").into(),
                 coin_on_this_chain,
-            )
-            .is_err());
+            ),
+        );
 
         assert_eq!(extras.log, expected_extras.log);
         assert_eq!(extras.events, expected_extras.events);
@@ -1618,6 +1619,45 @@ mod test_utils {
                     },
                 })
             }
+        }
+    }
+
+    #[track_caller]
+    pub fn assert_failure_injection<T>(point: FailurePoint, result: Result<T, MiddlewareError>) {
+        let caller = std::panic::Location::caller();
+
+        let error_msg = match result {
+            Ok(_) => {
+                panic!(
+                    "Panicked from {caller} due to failure injection \
+                     assertion: Expected {point:?}, but no error was found"
+                );
+            }
+            Err(MiddlewareError::ForwardToNextMiddleware) => {
+                panic!(
+                    "Panicked from {caller} due to failure injection \
+                     assertion: Expected {point:?}, but we were trying \
+                     to forward a call to the next middleware"
+                );
+            }
+            Err(MiddlewareError::Message(error_msg)) => error_msg,
+        };
+
+        let expected_failure_point_err_msg = failure_injection_err_msg(point);
+        let Some((_, got_failure_point_err_msg)) = error_msg.rsplit_once(": ") else {
+            panic!(
+                "Panicked from {caller} due to failure injection \
+                 assertion: Expected {point:?}, but the error was \
+                 different: {error_msg}"
+            );
+        };
+
+        if got_failure_point_err_msg != expected_failure_point_err_msg {
+            panic!(
+                "Panicked from {caller} due to failure injection \
+                 assertion: Expected {point:?}, but the error was \
+                 different: {got_failure_point_err_msg}"
+            );
         }
     }
 
