@@ -1,4 +1,4 @@
-mod utils;
+pub(crate) mod utils;
 
 use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
 

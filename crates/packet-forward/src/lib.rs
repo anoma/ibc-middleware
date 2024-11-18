@@ -7,7 +7,7 @@ extern crate alloc;
 mod msg;
 mod state;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use alloc::format;
 use alloc::vec::Vec;

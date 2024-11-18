@@ -68,3 +68,50 @@ impl From<InFlightPacket> for Packet {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::msg;
+    use crate::tests::utils::{channels, get_dummy_packet_data};
+
+    #[test]
+    fn conversion_from_inflight_packet_to_ibc_packet() {
+        let inflight_packet = InFlightPacket {
+            original_sender_address: String::new().into(),
+            refund_port_id: PortId::transfer(),
+            refund_channel_id: ChannelId::new(channels::BA),
+            packet_src_port_id: PortId::transfer(),
+            packet_src_channel_id: ChannelId::new(channels::AB),
+            packet_timeout_timestamp: TimeoutTimestamp::Never,
+            packet_timeout_height: TimeoutHeight::Never,
+            packet_data: get_dummy_packet_data(100),
+            refund_sequence: 0u64.into(),
+            retries_remaining: NonZeroU8::new(1),
+            timeout: msg::Duration::from_dur(dur::Duration::from_secs(600)),
+        };
+        let packet: Packet = inflight_packet.clone().into();
+
+        assert_eq!(inflight_packet.refund_sequence, packet.seq_on_a);
+
+        assert_eq!(inflight_packet.packet_src_port_id, packet.port_id_on_a);
+        assert_eq!(inflight_packet.packet_src_channel_id, packet.chan_id_on_a);
+
+        assert_eq!(inflight_packet.refund_port_id, packet.port_id_on_b);
+        assert_eq!(inflight_packet.refund_channel_id, packet.chan_id_on_b);
+
+        assert_eq!(
+            serde_json::to_vec(&inflight_packet.packet_data).unwrap(),
+            packet.data
+        );
+
+        assert_eq!(
+            inflight_packet.packet_timeout_height,
+            packet.timeout_height_on_b
+        );
+        assert_eq!(
+            inflight_packet.packet_timeout_timestamp,
+            packet.timeout_timestamp_on_b
+        );
+    }
+}
