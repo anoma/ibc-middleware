@@ -31,9 +31,10 @@ pub struct ForwardMetadata {
     ///
     /// Formatted as regular time strings (e.g. `"1m20s"`),
     /// or nanoseconds (e.g. `12345`).
-    pub timeout: Option<Duration>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<Duration>,
     /// The number of retries before a packet is invalidated.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub retries: Option<NonZeroU8>,
     /// The memo of the next forward transfer. This might be
     /// another [`ForwardMetadata`] structure, along with
