@@ -1147,6 +1147,7 @@ mod tests {
 mod test_utils {
     use std::collections::HashMap;
 
+    use ibc_app_transfer_types::{TracePath, TracePrefix};
     use ibc_primitives::Timestamp;
     use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
     use ibc_testkit::testapp::ibc::applications::transfer::types::DummyTransferModule;
@@ -1160,11 +1161,11 @@ mod test_utils {
         pub const AB: u64 = 0;
 
         // Outgoing channels from B.
-        pub const BA: u64 = 0;
-        pub const BC: u64 = 1;
+        pub const BA: u64 = 2;
+        pub const BC: u64 = 3;
 
         // Outgoing channels from C.
-        pub const CB: u64 = 0;
+        pub const CB: u64 = 5;
     }
 
     pub mod base_denoms {
@@ -1175,6 +1176,7 @@ mod test_utils {
 
     pub const ESCROW_ACCOUNT: &str = "ics-ics20-escrow-account";
 
+    #[derive(Debug)]
     pub struct Store<M> {
         middleware: M,
         pub inflight_packet_store: HashMap<InFlightPacketKey, InFlightPacket>,
@@ -1194,6 +1196,205 @@ mod test_utils {
                 refunds_sent: Vec::new(),
                 ack_and_events_written: Vec::new(),
             }
+        }
+    }
+
+    impl<M> IbcCoreModule for Store<M>
+    where
+        M: IbcCoreModule,
+    {
+        fn on_recv_packet_execute(
+            &mut self,
+            packet: &Packet,
+            relayer: &Signer,
+        ) -> (ModuleExtras, Option<Acknowledgement>) {
+            self.middleware.on_recv_packet_execute(packet, relayer)
+        }
+
+        fn on_acknowledgement_packet_validate(
+            &self,
+            packet: &Packet,
+            acknowledgement: &Acknowledgement,
+            relayer: &Signer,
+        ) -> Result<(), PacketError> {
+            self.middleware
+                .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
+        }
+
+        fn on_acknowledgement_packet_execute(
+            &mut self,
+            packet: &Packet,
+            acknowledgement: &Acknowledgement,
+            relayer: &Signer,
+        ) -> (ModuleExtras, Result<(), PacketError>) {
+            self.middleware
+                .on_acknowledgement_packet_execute(packet, acknowledgement, relayer)
+        }
+
+        fn on_timeout_packet_validate(
+            &self,
+            packet: &Packet,
+            relayer: &Signer,
+        ) -> Result<(), PacketError> {
+            self.middleware.on_timeout_packet_validate(packet, relayer)
+        }
+
+        fn on_timeout_packet_execute(
+            &mut self,
+            packet: &Packet,
+            relayer: &Signer,
+        ) -> (ModuleExtras, Result<(), PacketError>) {
+            self.middleware.on_timeout_packet_execute(packet, relayer)
+        }
+
+        fn on_chan_open_init_validate(
+            &self,
+            order: Order,
+            connection_hops: &[ConnectionId],
+            port_id: &PortId,
+            channel_id: &ChannelId,
+            counterparty: &Counterparty,
+            version: &Version,
+        ) -> Result<Version, ChannelError> {
+            self.middleware.on_chan_open_init_validate(
+                order,
+                connection_hops,
+                port_id,
+                channel_id,
+                counterparty,
+                version,
+            )
+        }
+
+        fn on_chan_open_init_execute(
+            &mut self,
+            order: Order,
+            connection_hops: &[ConnectionId],
+            port_id: &PortId,
+            channel_id: &ChannelId,
+            counterparty: &Counterparty,
+            version: &Version,
+        ) -> Result<(ModuleExtras, Version), ChannelError> {
+            self.middleware.on_chan_open_init_execute(
+                order,
+                connection_hops,
+                port_id,
+                channel_id,
+                counterparty,
+                version,
+            )
+        }
+
+        fn on_chan_open_try_validate(
+            &self,
+            order: Order,
+            connection_hops: &[ConnectionId],
+            port_id: &PortId,
+            channel_id: &ChannelId,
+            counterparty: &Counterparty,
+            counterparty_version: &Version,
+        ) -> Result<Version, ChannelError> {
+            self.middleware.on_chan_open_try_validate(
+                order,
+                connection_hops,
+                port_id,
+                channel_id,
+                counterparty,
+                counterparty_version,
+            )
+        }
+
+        fn on_chan_open_try_execute(
+            &mut self,
+            order: Order,
+            connection_hops: &[ConnectionId],
+            port_id: &PortId,
+            channel_id: &ChannelId,
+            counterparty: &Counterparty,
+            counterparty_version: &Version,
+        ) -> Result<(ModuleExtras, Version), ChannelError> {
+            self.middleware.on_chan_open_try_execute(
+                order,
+                connection_hops,
+                port_id,
+                channel_id,
+                counterparty,
+                counterparty_version,
+            )
+        }
+
+        fn on_chan_open_ack_validate(
+            &self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+            counterparty_version: &Version,
+        ) -> Result<(), ChannelError> {
+            self.middleware
+                .on_chan_open_ack_validate(port_id, channel_id, counterparty_version)
+        }
+
+        fn on_chan_open_ack_execute(
+            &mut self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+            counterparty_version: &Version,
+        ) -> Result<ModuleExtras, ChannelError> {
+            self.middleware
+                .on_chan_open_ack_execute(port_id, channel_id, counterparty_version)
+        }
+
+        fn on_chan_open_confirm_validate(
+            &self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+        ) -> Result<(), ChannelError> {
+            self.middleware
+                .on_chan_open_confirm_validate(port_id, channel_id)
+        }
+
+        fn on_chan_open_confirm_execute(
+            &mut self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+        ) -> Result<ModuleExtras, ChannelError> {
+            self.middleware
+                .on_chan_open_confirm_execute(port_id, channel_id)
+        }
+
+        fn on_chan_close_init_validate(
+            &self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+        ) -> Result<(), ChannelError> {
+            self.middleware
+                .on_chan_close_init_validate(port_id, channel_id)
+        }
+
+        fn on_chan_close_init_execute(
+            &mut self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+        ) -> Result<ModuleExtras, ChannelError> {
+            self.middleware
+                .on_chan_close_init_execute(port_id, channel_id)
+        }
+
+        fn on_chan_close_confirm_validate(
+            &self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+        ) -> Result<(), ChannelError> {
+            self.middleware
+                .on_chan_close_confirm_validate(port_id, channel_id)
+        }
+
+        fn on_chan_close_confirm_execute(
+            &mut self,
+            port_id: &PortId,
+            channel_id: &ChannelId,
+        ) -> Result<ModuleExtras, ChannelError> {
+            self.middleware
+                .on_chan_close_confirm_execute(port_id, channel_id)
         }
     }
 
@@ -1275,13 +1476,66 @@ mod test_utils {
 
         fn get_denom_for_this_chain(
             &self,
-            _this_chain_port: &PortId,
-            _this_chain_chan: &ChannelId,
-            _source_port: &PortId,
-            _source_chan: &ChannelId,
-            _source_denom: &PrefixedDenom,
+            this_chain_port: &PortId,
+            this_chain_chan: &ChannelId,
+            source_port: &PortId,
+            source_chan: &ChannelId,
+            source_denom: &PrefixedDenom,
         ) -> Result<PrefixedDenom, Self::Error> {
-            todo!()
+            let transfer_port = PortId::transfer();
+            assert_eq!(this_chain_port, &transfer_port);
+            assert_eq!(source_port, &transfer_port);
+
+            let this_chain_chan: u64 = this_chain_chan
+                .as_str()
+                .strip_prefix("channel-")
+                .unwrap()
+                .parse()
+                .unwrap();
+            let source_chan: u64 = source_chan
+                .as_str()
+                .strip_prefix("channel-")
+                .unwrap()
+                .parse()
+                .unwrap();
+
+            assert_eq!((source_chan, this_chain_chan), (channels::AB, channels::BA));
+
+            let trace_prefix = TracePrefix::new(transfer_port.clone(), ChannelId::new(source_chan));
+
+            if source_denom.trace_path.starts_with(&trace_prefix) {
+                // NB: we're either dealing with `base_denoms::B` or `base_denoms::C`.
+                // we must unwrap `source_denom`.
+
+                let this_chain_trace_path = {
+                    let mut trace = source_denom.trace_path.clone();
+                    trace.remove_prefix(&trace_prefix);
+                    trace
+                };
+
+                Ok(PrefixedDenom {
+                    base_denom: source_denom.base_denom.clone(),
+                    trace_path: this_chain_trace_path,
+                })
+            } else {
+                // NB: this has to be `base_denoms::A`. we must
+                // wrap `source_denom`.
+
+                assert!(source_denom.trace_path.is_empty());
+                assert_eq!(source_denom.base_denom.as_str(), base_denoms::A);
+
+                Ok(PrefixedDenom {
+                    base_denom: base_denoms::A.parse().unwrap(),
+                    trace_path: {
+                        let mut trace = TracePath::empty();
+                        trace.add_prefix(TracePrefix::new(
+                            transfer_port,
+                            ChannelId::new(this_chain_chan),
+                        ));
+                        trace
+                    },
+                })
+            }
         }
     }
 
@@ -1318,5 +1572,111 @@ mod test_utils {
         let mut p: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
         p.data = serde_json::to_vec(packet_data).unwrap();
         p
+    }
+
+    #[test]
+    fn get_denom_for_this_chain_works_as_expected() {
+        let pfm = get_dummy_pfm();
+
+        let transfer_port = PortId::transfer();
+
+        // A => B
+        let source_denom = PrefixedDenom {
+            base_denom: base_denoms::A.parse().unwrap(),
+            trace_path: TracePath::empty(),
+        };
+        let expected_denom = PrefixedDenom {
+            base_denom: base_denoms::A.parse().unwrap(),
+            trace_path: {
+                let mut trace = TracePath::empty();
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    ChannelId::new(channels::BA),
+                ));
+                trace
+            },
+        };
+        let got_denom = pfm
+            .next
+            .get_denom_for_this_chain(
+                &transfer_port,
+                &ChannelId::new(channels::BA),
+                &transfer_port,
+                &ChannelId::new(channels::AB),
+                &source_denom,
+            )
+            .unwrap();
+        assert_eq!(expected_denom, got_denom);
+
+        // C => B => A => B
+        let source_denom = PrefixedDenom {
+            base_denom: base_denoms::C.parse().unwrap(),
+            trace_path: {
+                let mut trace = TracePath::empty();
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on B
+                    ChannelId::new(channels::BC),
+                ));
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on A
+                    ChannelId::new(channels::AB),
+                ));
+                trace
+            },
+        };
+        let expected_denom = PrefixedDenom {
+            base_denom: base_denoms::C.parse().unwrap(),
+            trace_path: {
+                let mut trace = TracePath::empty();
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on B
+                    ChannelId::new(channels::BC),
+                ));
+                trace
+            },
+        };
+        let got_denom = pfm
+            .next
+            .get_denom_for_this_chain(
+                &transfer_port,
+                &ChannelId::new(channels::BA),
+                &transfer_port,
+                &ChannelId::new(channels::AB),
+                &source_denom,
+            )
+            .unwrap();
+        assert_eq!(expected_denom, got_denom);
+
+        // B => A => B
+        let source_denom = PrefixedDenom {
+            base_denom: base_denoms::B.parse().unwrap(),
+            trace_path: {
+                let mut trace = TracePath::empty();
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on A
+                    ChannelId::new(channels::AB),
+                ));
+                trace
+            },
+        };
+        let expected_denom = PrefixedDenom {
+            base_denom: base_denoms::B.parse().unwrap(),
+            trace_path: TracePath::empty(),
+        };
+        let got_denom = pfm
+            .next
+            .get_denom_for_this_chain(
+                &transfer_port,
+                &ChannelId::new(channels::BA),
+                &transfer_port,
+                &ChannelId::new(channels::AB),
+                &source_denom,
+            )
+            .unwrap();
+        assert_eq!(expected_denom, got_denom);
     }
 }
