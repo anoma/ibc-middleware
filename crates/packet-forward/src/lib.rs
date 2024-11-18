@@ -1140,4 +1140,36 @@ mod tests {
 
         assert_eq!(got_inflight_packet, expected_inflight_packet);
     }
+
+    #[test]
+    fn module_extras_appending() {
+        let mut first_extras = ModuleExtras::empty();
+        let mut second_extras = ModuleExtras::empty();
+
+        emit_event_with_attrs(&mut first_extras, {
+            let mut attributes = Vec::with_capacity(8);
+            push_event_attr(&mut attributes, "1".to_owned(), String::new());
+            attributes
+        });
+        emit_event_with_attrs(&mut second_extras, {
+            let mut attributes = Vec::with_capacity(8);
+            push_event_attr(&mut attributes, "2".to_owned(), String::new());
+            attributes
+        });
+
+        let extras = {
+            join_module_extras(&mut first_extras, second_extras);
+            first_extras
+        };
+
+        assert!(extras.log.is_empty());
+        assert_eq!(
+            extras
+                .events
+                .iter()
+                .flat_map(|e| e.attributes.iter().map(|at| &at.key))
+                .collect::<Vec<_>>(),
+            ["1", "2"]
+        );
+    }
 }
