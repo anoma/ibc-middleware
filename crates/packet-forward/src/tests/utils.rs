@@ -13,12 +13,12 @@ pub mod channels {
     pub const AB: u64 = 0;
 
     // Outgoing channels from B.
-    pub const BA: u64 = 2;
-    pub const BC: u64 = 3;
+    pub const BA: u64 = 1;
+    pub const BC: u64 = 2;
 
     // Outgoing channels from C.
     #[allow(dead_code)]
-    pub const CB: u64 = 5;
+    pub const CB: u64 = 3;
 }
 
 pub mod base_denoms {
