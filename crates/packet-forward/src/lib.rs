@@ -972,13 +972,23 @@ mod tests {
         }
     }
 
-    fn get_dummy_packet_data(transfer_amount: u64) -> PacketData {
+    fn get_dummy_packet_data_with_memo(transfer_amount: u64, memo: String) -> PacketData {
         PacketData {
             sender: String::new().into(),
             receiver: String::new().into(),
             token: get_dummy_coin(transfer_amount),
-            memo: String::new().into(),
+            memo: memo.into(),
         }
+    }
+
+    fn get_dummy_packet_data(transfer_amount: u64) -> PacketData {
+        get_dummy_packet_data_with_memo(transfer_amount, String::new())
+    }
+
+    fn get_dummy_packet_with_data(packet_data: &PacketData) -> Packet {
+        let mut p: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
+        p.data = serde_json::to_vec(packet_data).unwrap();
+        p
     }
 
     #[test]
@@ -994,14 +1004,69 @@ mod tests {
     #[test]
     fn decode_ics20_msg_on_valid_ics20_data() {
         let expected_packet_data = get_dummy_packet_data(100);
-        let packet = {
-            let mut p: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
-            p.data = serde_json::to_vec(&expected_packet_data).unwrap();
-            p
-        };
+        let packet = get_dummy_packet_with_data(&expected_packet_data);
 
         let got_packet_data = decode_ics20_msg(&packet).unwrap();
         assert_eq!(got_packet_data, expected_packet_data);
+    }
+
+    #[test]
+    fn decode_forward_msg_forwards_to_next_middleware_not_json() {
+        let packet_data = get_dummy_packet_data_with_memo(100, "oh hi mark".to_owned());
+        let packet = get_dummy_packet_with_data(&packet_data);
+
+        assert!(matches!(
+            decode_forward_msg(&packet),
+            Err(MiddlewareError::ForwardToNextMiddleware)
+        ));
+    }
+
+    #[test]
+    fn decode_forward_msg_forwards_to_next_middleware_not_pfm_msg() {
+        let packet_data =
+            get_dummy_packet_data_with_memo(100, r#"{"combo": "breaker"}"#.to_owned());
+        let packet = get_dummy_packet_with_data(&packet_data);
+
+        assert!(matches!(
+            decode_forward_msg(&packet),
+            Err(MiddlewareError::ForwardToNextMiddleware)
+        ));
+    }
+
+    #[test]
+    fn decode_forward_msg_failure() {
+        let packet_data =
+            get_dummy_packet_data_with_memo(100, r#"{"forward": {"foot": "best"}}"#.to_owned());
+        let packet = get_dummy_packet_with_data(&packet_data);
+
+        assert!(matches!(
+            decode_forward_msg(&packet),
+            Err(MiddlewareError::Message(_))
+        ));
+    }
+
+    #[test]
+    fn decode_forward_msg_success() {
+        let expected_fwd_metadata = msg::PacketMetadata {
+            forward: msg::ForwardMetadata {
+                receiver: String::from("receiver").into(),
+                port: PortId::transfer(),
+                channel: ChannelId::new(TARGET_CHANNEL),
+                timeout: None,
+                retries: None,
+                next: None,
+            },
+        };
+        let expected_packet_data = get_dummy_packet_data_with_memo(
+            100,
+            serde_json::to_string(&expected_fwd_metadata).unwrap(),
+        );
+
+        let packet = get_dummy_packet_with_data(&expected_packet_data);
+        let (got_packet_data, got_fwd_metadata) = decode_forward_msg(&packet).unwrap();
+
+        assert_eq!(expected_packet_data, got_packet_data);
+        assert_eq!(expected_fwd_metadata.forward, got_fwd_metadata);
     }
 
     #[test]
