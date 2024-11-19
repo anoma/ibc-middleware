@@ -1265,8 +1265,7 @@ dependencies = [
  "ibc-primitives",
  "ibc-testkit",
  "serde",
- "serde-json-wasm",
- "zjson",
+ "serde_json",
 ]
 
 [[package]]
@@ -2760,9 +2759,3 @@ dependencies = [
  "quote",
  "syn 2.0.79",
 ]
-
-[[package]]
-name = "zjson"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbbd734b37ea81f973006656f63b303fb62c4d319ae89b3956e237977cef2986"

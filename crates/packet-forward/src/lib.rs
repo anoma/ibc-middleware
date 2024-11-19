@@ -408,10 +408,18 @@ where
         transfer_pkt: PacketData,
         inflight_packet: InFlightPacket,
     ) -> Result<(), MiddlewareError> {
-        let next = if !transfer_pkt.memo.as_ref().is_empty() {
-            Some(transfer_pkt.memo.to_string())
-        } else {
-            None
+        let next = {
+            let memo = transfer_pkt.memo.as_ref();
+
+            if !memo.is_empty() {
+                let json_obj_memo: serde_json::Map<String, serde_json::Value> =
+                    serde_json::from_str(memo).map_err(|err| {
+                        MiddlewareError::Message(format!("Failed to decode next memo: {err}"))
+                    })?;
+                Some(json_obj_memo)
+            } else {
+                None
+            }
         };
         let fwd_metadata = msg::ForwardMetadata {
             receiver: transfer_pkt.receiver,
@@ -864,46 +872,25 @@ fn decode_ics20_msg(packet: &Packet) -> Result<PacketData, MiddlewareError> {
 fn decode_forward_msg(
     packet: &Packet,
 ) -> Result<(PacketData, msg::ForwardMetadata), MiddlewareError> {
-    use zjson::any::Any;
-    use zjson::document::Document;
-
     let transfer_pkt = decode_ics20_msg(packet)?;
 
-    let mut document = Document::new(transfer_pkt.memo.as_ref());
-
-    let Some(Any::Object(mut json_obj_memo)) = document.next().map_err(|_| {
-        // NB: if the ICS-20 packet memo is not valid JSON, we forward
-        // this call to the next middleware
-        MiddlewareError::ForwardToNextMiddleware
-    })?
-    else {
-        // NB: if the ICS-20 packet memo is not a valid JSON object, we forward
-        // this call to the next middleware
-        return Err(MiddlewareError::ForwardToNextMiddleware);
-    };
-
-    while let Some((key, mut value)) = json_obj_memo.next().map_err(|_| {
-        // NB: the data is not a valid json object. kind of weird,
-        // since it looked like one, but oh well. alas, we forward
-        // the call to the next middleware
-        MiddlewareError::ForwardToNextMiddleware
-    })? {
-        if key == "forward" {
-            return serde_json::from_str(transfer_pkt.memo.as_ref()).map_or_else(
-                |err| Err(MiddlewareError::Message(err.to_string())),
-                |msg::PacketMetadata { forward }| Ok((transfer_pkt, forward)),
-            );
-        }
-
-        value.finish().map_err(|_| {
-            // NB: again, not json data? forward the call
+    let json_obj_memo: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(transfer_pkt.memo.as_ref()).map_err(|_| {
+            // NB: if the ICS-20 packet memo is not a valid JSON object, we forward
+            // this call to the next middleware
             MiddlewareError::ForwardToNextMiddleware
         })?;
+
+    if !json_obj_memo.contains_key("forward") {
+        // NB: the memo was a valid json object, but it wasn't up to
+        // the PFM to consume it, so we forward the call to the next middleware
+        return Err(MiddlewareError::ForwardToNextMiddleware);
     }
 
-    // NB: we could not find the `forward` key. give up and
-    // forward the call to the next middleware
-    Err(MiddlewareError::ForwardToNextMiddleware)
+    serde_json::from_value(json_obj_memo.into()).map_or_else(
+        |err| Err(MiddlewareError::Message(err.to_string())),
+        |msg::PacketMetadata { forward }| Ok((transfer_pkt, forward)),
+    )
 }
 
 fn join_module_extras(first: &mut ModuleExtras, mut second: ModuleExtras) {
