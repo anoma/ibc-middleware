@@ -2,6 +2,7 @@ pub(crate) mod utils;
 
 use std::collections::HashMap;
 
+use ibc_app_transfer_types::{TracePath, TracePrefix};
 use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
 
 use self::utils::*;
@@ -257,15 +258,14 @@ fn events_kept_on_errors() {
     assert_eq!(extras.events, expected_extras.events);
 }
 
-#[test]
-fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
-    const TRANSFER_AMOUNT: u64 = 100;
-
+fn on_recv_packet_execute_inner(
+    transfer_coin: Coin<PrefixedDenom>,
+) -> Result<(), crate::MiddlewareError> {
     let mut pfm = get_dummy_pfm();
     let mut extras = ModuleExtras::empty();
 
     let packet_data = get_dummy_packet_data_with_fwd_meta(
-        get_dummy_coin(TRANSFER_AMOUNT),
+        transfer_coin.clone(),
         msg::PacketMetadata {
             forward: get_dummy_fwd_metadata(),
         },
@@ -273,7 +273,7 @@ fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
     let packet = get_dummy_packet_with_data(0, &packet_data);
 
     let coin_on_this_chain = Coin {
-        amount: TRANSFER_AMOUNT.into(),
+        amount: transfer_coin.amount,
         denom: pfm
             .next
             .get_denom_for_this_chain(
@@ -353,6 +353,84 @@ fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
             },
         }]
     );
+
+    Ok(())
+}
+
+#[test]
+fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
+    const TRANSFER_AMOUNT: u64 = 100;
+
+    let transfer_port = PortId::transfer();
+
+    let denoms = vec![
+        // A => B
+        PrefixedDenom {
+            base_denom: base_denoms::A.parse().unwrap(),
+            trace_path: TracePath::empty(),
+        },
+        // C => B => A => B
+        PrefixedDenom {
+            base_denom: base_denoms::C.parse().unwrap(),
+            trace_path: {
+                let mut trace = TracePath::empty();
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on B
+                    ChannelId::new(channels::BC),
+                ));
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on A
+                    ChannelId::new(channels::AB),
+                ));
+                trace
+            },
+        },
+        // B => A => B
+        PrefixedDenom {
+            base_denom: base_denoms::B.parse().unwrap(),
+            trace_path: {
+                let mut trace = TracePath::empty();
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on A
+                    ChannelId::new(channels::AB),
+                ));
+                trace
+            },
+        },
+        // D => C => B => A => B
+        PrefixedDenom {
+            base_denom: base_denoms::D.parse().unwrap(),
+            trace_path: {
+                let mut trace = TracePath::empty();
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on C
+                    ChannelId::new(channels::CD),
+                ));
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on B
+                    ChannelId::new(channels::BC),
+                ));
+                trace.add_prefix(TracePrefix::new(
+                    transfer_port.clone(),
+                    // landed on A
+                    ChannelId::new(channels::AB),
+                ));
+                trace
+            },
+        },
+    ];
+
+    for denom in denoms {
+        on_recv_packet_execute_inner(Coin {
+            denom,
+            amount: TRANSFER_AMOUNT.into(),
+        })?;
+    }
 
     Ok(())
 }
