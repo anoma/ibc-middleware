@@ -1,3 +1,4 @@
+use alloc::format;
 use alloc::string::{String, ToString};
 use core::fmt;
 use core::num::NonZeroU8;
@@ -40,7 +41,7 @@ pub struct ForwardMetadata {
     /// another [`ForwardMetadata`] structure, along with
     /// any additional middleware callbacks.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub next: Option<String>,
+    pub next: Option<JsonObjectMemo>,
 }
 
 fn deserialize_non_empty_signer<'de, D>(deserializer: D) -> Result<Signer, D::Error>
@@ -73,6 +74,52 @@ where
     T: fmt::Display,
 {
     serializer.serialize_str(&value.to_string())
+}
+
+/// JSON object encoded in the memo field of an ICS-20 packet.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Clone)]
+pub struct JsonObjectMemo {
+    /// The JSON object being transmitted.
+    #[serde(deserialize_with = "deserialize_json_obj")]
+    pub memo: String,
+}
+
+impl JsonObjectMemo {
+    /// Return a new [`JsonObjectMemo`] from the provided string.
+    pub const fn new(memo: String) -> Self {
+        Self { memo }
+    }
+}
+
+impl From<String> for JsonObjectMemo {
+    fn from(memo: String) -> Self {
+        Self::new(memo)
+    }
+}
+
+fn deserialize_json_obj<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use zjson::any::Any;
+    use zjson::document::Document;
+
+    let next = String::deserialize(deserializer)?;
+
+    let mut document = Document::new(&next);
+
+    let Some(Any::Object(mut json_obj_memo)) = document
+        .next()
+        .map_err(|err| serde::de::Error::custom(format!("Expected JSON object memo: {err}")))?
+    else {
+        return Err(serde::de::Error::custom("Expected JSON object memo"));
+    };
+
+    json_obj_memo
+        .finish()
+        .map_err(|err| serde::de::Error::custom(format!("Expected JSON object memo: {err}")))?;
+
+    Ok(next)
 }
 
 #[doc(inline)]
@@ -217,7 +264,13 @@ mod tests {
                         "channel": "channel-1180",
                         "port": "transfer",
                         "receiver": "tnam1qrx3tphxjr9qaznadzykxzt4x76c0cm8ts3pwukt",
-                        "next": "{\"forward\":{\"receiver\":\"noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv\",\"channel\":\"channel-1181\",\"port\":\"transfer\"}}"
+                        "next": {
+                          "forward": {
+                            "receiver": "noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv",
+                            "channel": "channel-1181",
+                            "port": "transfer"
+                          }
+                        }
                       }
                     }
                 "#,
@@ -232,7 +285,7 @@ mod tests {
                         retries: None,
                         next: Some(
                             "{\"forward\":{\"receiver\":\"noble18st0wqx84av8y6xdlss9d6m2nepyqwj6nfxxuv\",\
-                             \"channel\":\"channel-1181\",\"port\":\"transfer\"}}".to_string(),
+                             \"channel\":\"channel-1181\",\"port\":\"transfer\"}}".to_string().into(),
                         ),
                     },
                 }),

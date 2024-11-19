@@ -225,13 +225,7 @@ where
 
         let next_memo = fwd_metadata
             .next
-            .as_ref()
-            .map(|next| {
-                serde_json::to_string(next).map_err(|err| {
-                    MiddlewareError::Message(format!("Failed to encode next memo: {err}"))
-                })
-            })
-            .transpose()?
+            .map(|msg::JsonObjectMemo { memo }| memo)
             .unwrap_or_default()
             .into();
 
@@ -409,7 +403,7 @@ where
         inflight_packet: InFlightPacket,
     ) -> Result<(), MiddlewareError> {
         let next = if !transfer_pkt.memo.as_ref().is_empty() {
-            Some(transfer_pkt.memo.to_string())
+            Some(msg::JsonObjectMemo::new(transfer_pkt.memo.to_string()))
         } else {
             None
         };
