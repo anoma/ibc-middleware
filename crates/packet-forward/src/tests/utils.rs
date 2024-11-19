@@ -11,6 +11,8 @@ pub mod addresses {
     #[allow(dead_code)]
     pub const B: &str = "b1bertha";
     pub const C: &str = "c1copernicus";
+    #[allow(dead_code)]
+    pub const D: &str = "c1dionysus";
 
     pub const NULL: &str = "NULL";
     pub const ESCROW_ACCOUNT: &str = "b1escrowaccount";
@@ -29,12 +31,18 @@ pub mod channels {
     // Outgoing channels from C.
     #[allow(dead_code)]
     pub const CB: u64 = 3;
+    pub const CD: u64 = 4;
+
+    // Outgoing channels from D.
+    #[allow(dead_code)]
+    pub const DC: u64 = 5;
 }
 
 pub mod base_denoms {
     pub const A: &str = "uauauiua";
     pub const B: &str = "ubongus";
     pub const C: &str = "uchungus";
+    pub const D: &str = "udongus";
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -415,8 +423,8 @@ impl<M> PfmContext for Store<M> {
         let trace_prefix = TracePrefix::new(transfer_port.clone(), ChannelId::new(source_chan));
 
         if source_denom.trace_path.starts_with(&trace_prefix) {
-            // NB: we're either dealing with `base_denoms::B` or `base_denoms::C`.
-            // we must unwrap `source_denom`.
+            // NB: we're either dealing with `base_denoms::B`, `base_denoms::C`,
+            // or `base_denoms::D`. we must unwrap `source_denom`.
 
             let this_chain_trace_path = {
                 let mut trace = source_denom.trace_path.clone();
@@ -577,6 +585,7 @@ fn get_denom_for_this_chain_works_as_expected() {
             let mut trace = TracePath::empty();
             trace.add_prefix(TracePrefix::new(
                 transfer_port.clone(),
+                // landed on B
                 ChannelId::new(channels::BA),
             ));
             trace
@@ -652,6 +661,58 @@ fn get_denom_for_this_chain_works_as_expected() {
     let expected_denom = PrefixedDenom {
         base_denom: base_denoms::B.parse().unwrap(),
         trace_path: TracePath::empty(),
+    };
+    let got_denom = pfm
+        .next
+        .get_denom_for_this_chain(
+            &transfer_port,
+            &ChannelId::new(channels::BA),
+            &transfer_port,
+            &ChannelId::new(channels::AB),
+            &source_denom,
+        )
+        .unwrap();
+    assert_eq!(expected_denom, got_denom);
+
+    // D => C => B => A => B
+    let source_denom = PrefixedDenom {
+        base_denom: base_denoms::D.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on C
+                ChannelId::new(channels::CD),
+            ));
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on B
+                ChannelId::new(channels::BC),
+            ));
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on A
+                ChannelId::new(channels::AB),
+            ));
+            trace
+        },
+    };
+    let expected_denom = PrefixedDenom {
+        base_denom: base_denoms::D.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on C
+                ChannelId::new(channels::CD),
+            ));
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on B
+                ChannelId::new(channels::BC),
+            ));
+            trace
+        },
     };
     let got_denom = pfm
         .next
