@@ -524,24 +524,27 @@ pub fn get_dummy_coin(amount: u64) -> Coin<PrefixedDenom> {
 }
 
 pub fn get_dummy_packet_data_with_fwd_meta(
-    transfer_amount: u64,
+    transfer_coin: Coin<PrefixedDenom>,
     meta: msg::PacketMetadata,
 ) -> PacketData {
-    get_dummy_packet_data_with_memo(transfer_amount, serde_json::to_string(&meta).unwrap())
+    get_dummy_packet_data_with_memo(transfer_coin, serde_json::to_string(&meta).unwrap())
 }
 
-pub fn get_dummy_packet_data_with_memo(transfer_amount: u64, memo: String) -> PacketData {
+pub fn get_dummy_packet_data_with_memo(
+    transfer_coin: Coin<PrefixedDenom>,
+    memo: String,
+) -> PacketData {
     PacketData {
         sender: addresses::A.to_string().into(),
         // NB: the ICS-20 receiver field is overriden
         receiver: addresses::NULL.to_string().into(),
-        token: get_dummy_coin(transfer_amount),
+        token: transfer_coin,
         memo: memo.into(),
     }
 }
 
-pub fn get_dummy_packet_data(transfer_amount: u64) -> PacketData {
-    get_dummy_packet_data_with_memo(transfer_amount, String::new())
+pub fn get_dummy_packet_data(transfer_coin: Coin<PrefixedDenom>) -> PacketData {
+    get_dummy_packet_data_with_memo(transfer_coin, String::new())
 }
 
 pub fn get_dummy_packet_with_data(seq: u64, packet_data: &PacketData) -> Packet {

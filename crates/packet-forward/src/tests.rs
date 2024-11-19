@@ -19,7 +19,7 @@ fn decode_ics20_msg_forwards_to_next_middleware() {
 
 #[test]
 fn decode_ics20_msg_on_valid_ics20_data() {
-    let expected_packet_data = get_dummy_packet_data(100);
+    let expected_packet_data = get_dummy_packet_data(get_dummy_coin(100));
     let packet = get_dummy_packet_with_data(0, &expected_packet_data);
 
     let got_packet_data = decode_ics20_msg(&packet).unwrap();
@@ -28,7 +28,7 @@ fn decode_ics20_msg_on_valid_ics20_data() {
 
 #[test]
 fn decode_forward_msg_forwards_to_next_middleware_not_json() {
-    let packet_data = get_dummy_packet_data_with_memo(100, "oh hi mark".to_owned());
+    let packet_data = get_dummy_packet_data_with_memo(get_dummy_coin(100), "oh hi mark".to_owned());
     let packet = get_dummy_packet_with_data(0, &packet_data);
 
     assert!(matches!(
@@ -39,7 +39,8 @@ fn decode_forward_msg_forwards_to_next_middleware_not_json() {
 
 #[test]
 fn decode_forward_msg_forwards_to_next_middleware_not_pfm_msg() {
-    let packet_data = get_dummy_packet_data_with_memo(100, r#"{"combo": "breaker"}"#.to_owned());
+    let packet_data =
+        get_dummy_packet_data_with_memo(get_dummy_coin(100), r#"{"combo": "breaker"}"#.to_owned());
     let packet = get_dummy_packet_with_data(0, &packet_data);
 
     assert!(matches!(
@@ -50,8 +51,10 @@ fn decode_forward_msg_forwards_to_next_middleware_not_pfm_msg() {
 
 #[test]
 fn decode_forward_msg_failure() {
-    let packet_data =
-        get_dummy_packet_data_with_memo(100, r#"{"forward": {"foot": "best"}}"#.to_owned());
+    let packet_data = get_dummy_packet_data_with_memo(
+        get_dummy_coin(100),
+        r#"{"forward": {"foot": "best"}}"#.to_owned(),
+    );
     let packet = get_dummy_packet_with_data(0, &packet_data);
 
     assert!(matches!(
@@ -66,7 +69,7 @@ fn decode_forward_msg_success() {
         forward: get_dummy_fwd_metadata(),
     };
     let expected_packet_data = get_dummy_packet_data_with_memo(
-        100,
+        get_dummy_coin(100),
         serde_json::to_string(&expected_fwd_metadata).unwrap(),
     );
 
@@ -89,7 +92,7 @@ fn next_inflight_packet_decreases_retries() {
         packet_src_channel_id: ChannelId::new(channels::AB),
         packet_timeout_timestamp: TimeoutTimestamp::Never,
         packet_timeout_height: TimeoutHeight::Never,
-        packet_data: get_dummy_packet_data(100),
+        packet_data: get_dummy_packet_data(get_dummy_coin(100)),
         refund_sequence: 0u64.into(),
         retries_remaining: Some(retries),
         timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
@@ -108,7 +111,7 @@ fn next_inflight_packet_decreases_retries() {
 
 #[test]
 fn next_inflight_packet_from_packet() {
-    let packet_data = get_dummy_packet_data(100);
+    let packet_data = get_dummy_packet_data(get_dummy_coin(100));
     let packet = Packet {
         data: serde_json::to_vec(&packet_data).unwrap(),
         port_id_on_b: PortId::transfer(),
@@ -136,7 +139,7 @@ fn next_inflight_packet_from_packet() {
         packet_src_channel_id: ChannelId::new(channels::AB),
         packet_timeout_timestamp: TimeoutTimestamp::Never,
         packet_timeout_height: TimeoutHeight::Never,
-        packet_data: get_dummy_packet_data(100),
+        packet_data: get_dummy_packet_data(get_dummy_coin(100)),
         refund_sequence: 0u64.into(),
         retries_remaining: Some(DEFAULT_FORWARD_RETRIES),
         timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
@@ -184,7 +187,7 @@ fn events_kept_on_errors() {
 
     let mut extras = ModuleExtras::empty();
 
-    let packet_data = get_dummy_packet_data(100);
+    let packet_data = get_dummy_packet_data(get_dummy_coin(100));
     let packet = get_dummy_packet_with_data(0, &packet_data);
     let fwd_metadata = get_dummy_fwd_metadata();
 
@@ -262,7 +265,7 @@ fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
     let mut extras = ModuleExtras::empty();
 
     let packet_data = get_dummy_packet_data_with_fwd_meta(
-        TRANSFER_AMOUNT,
+        get_dummy_coin(TRANSFER_AMOUNT),
         msg::PacketMetadata {
             forward: get_dummy_fwd_metadata(),
         },

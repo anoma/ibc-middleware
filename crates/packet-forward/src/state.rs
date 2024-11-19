@@ -73,7 +73,7 @@ impl From<InFlightPacket> for Packet {
 mod tests {
     use super::*;
     use crate::msg;
-    use crate::tests::utils::{channels, get_dummy_packet_data};
+    use crate::tests::utils::{channels, get_dummy_coin, get_dummy_packet_data};
 
     #[test]
     fn conversion_from_inflight_packet_to_ibc_packet() {
@@ -85,7 +85,7 @@ mod tests {
             packet_src_channel_id: ChannelId::new(channels::AB),
             packet_timeout_timestamp: TimeoutTimestamp::Never,
             packet_timeout_height: TimeoutHeight::Never,
-            packet_data: get_dummy_packet_data(100),
+            packet_data: get_dummy_packet_data(get_dummy_coin(100)),
             refund_sequence: 0u64.into(),
             retries_remaining: NonZeroU8::new(1),
             timeout: msg::Duration::from_dur(dur::Duration::from_secs(600)),
