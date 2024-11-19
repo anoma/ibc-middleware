@@ -941,12 +941,23 @@ fn next_inflight_packet(
 }
 
 #[inline]
-fn event_attr(key: String, value: String) -> ModuleEventAttribute {
-    ModuleEventAttribute { key, value }
+fn event_attr<K, V>(key: K, value: V) -> ModuleEventAttribute
+where
+    K: Into<String>,
+    V: Into<String>,
+{
+    ModuleEventAttribute {
+        key: key.into(),
+        value: value.into(),
+    }
 }
 
 #[inline]
-fn push_event_attr(attributes: &mut Vec<ModuleEventAttribute>, key: String, value: String) {
+fn push_event_attr<K, V>(attributes: &mut Vec<ModuleEventAttribute>, key: K, value: V)
+where
+    K: Into<String>,
+    V: Into<String>,
+{
     attributes.push(event_attr(key, value));
 }
 

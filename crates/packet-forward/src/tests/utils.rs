@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use ibc_app_transfer_types::{TracePath, TracePrefix};
 use ibc_primitives::Timestamp;
@@ -13,7 +13,7 @@ pub mod addresses {
     pub const C: &str = "c1copernicus";
 
     pub const NULL: &str = "NULL";
-    pub const ESCROW_ACCOUNT: &str = "ibc-ics20-escrow-account";
+    pub const ESCROW_ACCOUNT: &str = "b1escrowaccount";
 }
 
 // NOTE: Assume we have three chains: A, B, and C. The tests will be set

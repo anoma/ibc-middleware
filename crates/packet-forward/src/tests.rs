@@ -1,5 +1,7 @@
 pub(crate) mod utils;
 
+use std::collections::HashMap;
+
 use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
 
 use self::utils::*;
@@ -254,18 +256,100 @@ fn events_kept_on_errors() {
 
 #[test]
 fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
+    const TRANSFER_AMOUNT: u64 = 100;
+
     let mut pfm = get_dummy_pfm();
     let mut extras = ModuleExtras::empty();
 
     let packet_data = get_dummy_packet_data_with_fwd_meta(
-        100,
+        TRANSFER_AMOUNT,
         msg::PacketMetadata {
             forward: get_dummy_fwd_metadata(),
         },
     );
     let packet = get_dummy_packet_with_data(0, &packet_data);
 
+    let coin_on_this_chain = Coin {
+        amount: TRANSFER_AMOUNT.into(),
+        denom: pfm
+            .next
+            .get_denom_for_this_chain(
+                &packet.port_id_on_b,
+                &packet.chan_id_on_b,
+                &packet.port_id_on_a,
+                &packet.chan_id_on_a,
+                &packet_data.token.denom,
+            )
+            .unwrap(),
+    };
+
     pfm.on_recv_packet_execute_inner(&mut extras, &packet, &String::from("relayer").into())?;
 
-    panic!("{extras:#?}\n{pfm:#?}");
+    let expected_extras = {
+        let mut ex = ModuleExtras::empty();
+        emit_event_with_attrs(
+            &mut ex,
+            vec![
+                event_attr("is-retry", "false"),
+                event_attr("escrow-account", addresses::ESCROW_ACCOUNT),
+                event_attr("sender", addresses::A),
+                event_attr("receiver", addresses::C),
+                event_attr("port", "transfer"),
+                event_attr("channel", ChannelId::new(channels::BC).to_string()),
+            ],
+        );
+        emit_event_with_attrs(
+            &mut ex,
+            vec![event_attr("info", "Packet has been successfully forwarded")],
+        );
+        ex
+    };
+    assert_eq!(extras.log, expected_extras.log);
+    assert_eq!(extras.events, expected_extras.events);
+
+    assert!(pfm.next.refunds_received.is_empty());
+    assert!(pfm.next.refunds_sent.is_empty());
+    assert!(pfm.next.ack_and_events_written.is_empty());
+
+    assert_eq!(
+        pfm.next.inflight_packet_store,
+        HashMap::from_iter([(
+            InFlightPacketKey {
+                port: PortId::transfer(),
+                channel: ChannelId::new(channels::BC),
+                sequence: 0u64.into(),
+            },
+            InFlightPacket {
+                original_sender_address: addresses::A.to_string().into(),
+                refund_port_id: PortId::transfer(),
+                refund_channel_id: ChannelId::new(channels::BA),
+                packet_src_port_id: PortId::transfer(),
+                packet_src_channel_id: ChannelId::new(channels::AB),
+                packet_timeout_timestamp: TimeoutTimestamp::Never,
+                packet_timeout_height: TimeoutHeight::Never,
+                refund_sequence: 0u64.into(),
+                retries_remaining: Some(DEFAULT_FORWARD_RETRIES),
+                timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
+                packet_data,
+            },
+        )])
+    );
+
+    assert_eq!(
+        pfm.next.sent_transfers,
+        vec![MsgTransfer {
+            port_id_on_a: PortId::transfer(),
+            chan_id_on_a: ChannelId::new(channels::BC),
+            timeout_height_on_b: TimeoutHeight::Never,
+            timeout_timestamp_on_b: pfm.next.timeout_timestamp(DEFAULT_FORWARD_TIMEOUT).unwrap(),
+            packet_data: PacketData {
+                sender: addresses::ESCROW_ACCOUNT.to_string().into(),
+                receiver: addresses::C.to_string().into(),
+                token: coin_on_this_chain,
+                memo: String::new().into(),
+            },
+        }]
+    );
+
+    Ok(())
 }
