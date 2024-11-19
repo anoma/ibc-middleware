@@ -7,6 +7,7 @@ use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
 
 use self::utils::*;
 use super::*;
+use crate::new_error_ack;
 
 #[test]
 fn decode_ics20_msg_forwards_to_next_middleware() {
@@ -541,4 +542,40 @@ fn no_state_changes_if_next_fails_on_b() {
     assert!(pfm.next.refunds_received.is_empty());
     assert!(pfm.next.refunds_sent.is_empty());
     assert!(pfm.next.ack_and_events_written.is_empty());
+}
+
+#[test]
+fn nonexisting_ack_for_inflight_packet_not_handled_by_pfm() {
+    let packet_data = get_dummy_packet_data_with_fwd_meta(
+        get_dummy_coin(100),
+        msg::PacketMetadata {
+            forward: get_dummy_fwd_metadata(),
+        },
+    );
+    let packet = get_dummy_packet_with_data(0, &packet_data);
+
+    // first, check that we fail exactly where we intend to
+    // (after checking that we have an ICS-20 packet)
+    let mut pfm = get_dummy_pfm();
+    pfm.inject_failure(FailurePoint::RetrieveInFlightPacket);
+    assert_failure_injection(
+        FailurePoint::RetrieveInFlightPacket,
+        pfm.on_acknowledgement_packet_execute_inner(
+            &mut ModuleExtras::empty(),
+            &packet,
+            &new_error_ack("RIP").into(),
+        ),
+    );
+
+    //========
+
+    let mut pfm = get_dummy_pfm();
+    assert!(matches!(
+        pfm.on_acknowledgement_packet_execute_inner(
+            &mut ModuleExtras::empty(),
+            &packet,
+            &new_error_ack("RIP").into(),
+        ),
+        Err(MiddlewareError::ForwardToNextMiddleware)
+    ));
 }

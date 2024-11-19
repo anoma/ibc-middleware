@@ -64,6 +64,7 @@ pub enum FailurePoint {
     AfterNextMiddlewareOnRecvPacket,
     BeforeStoreInFlightPacket,
     AfterStoreInFlightPacket,
+    RetrieveInFlightPacket,
 }
 
 #[derive(Debug)]
@@ -396,6 +397,7 @@ impl<M> PfmContext for Store<M> {
         &self,
         key: &InFlightPacketKey,
     ) -> Result<Option<InFlightPacket>, Self::Error> {
+        self.check_failure_injection(FailurePoint::RetrieveInFlightPacket)?;
         Ok(self.inflight_packet_store.get(key).cloned())
     }
 
