@@ -545,7 +545,7 @@ fn no_state_changes_if_next_fails_on_b() {
 }
 
 #[test]
-fn nonexisting_ack_for_inflight_packet_not_handled_by_pfm() {
+fn non_existent_inflight_packet_not_handled_by_pfm() {
     let packet_data = get_dummy_packet_data_with_fwd_meta(
         get_dummy_coin(100),
         msg::PacketMetadata {
