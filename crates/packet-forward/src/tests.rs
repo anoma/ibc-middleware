@@ -515,3 +515,30 @@ fn happy_flow_from_a_to_c() -> Result<(), crate::MiddlewareError> {
 
     Ok(())
 }
+
+#[test]
+fn no_state_changes_if_next_fails_on_b() {
+    let mut pfm = get_dummy_pfm();
+    pfm.inject_failure(FailurePoint::AfterNextMiddlewareOnRecvPacket);
+
+    let mut extras = ModuleExtras::empty();
+
+    let packet_data = get_dummy_packet_data_with_fwd_meta(
+        get_dummy_coin(100),
+        msg::PacketMetadata {
+            forward: get_dummy_fwd_metadata(),
+        },
+    );
+    let packet = get_dummy_packet_with_data(0, &packet_data);
+
+    assert_failure_injection(
+        FailurePoint::AfterNextMiddlewareOnRecvPacket,
+        pfm.on_recv_packet_execute_inner(&mut extras, &packet, &addresses::RELAYER.signer()),
+    );
+
+    assert!(pfm.next.inflight_packet_store.is_empty());
+    assert!(pfm.next.sent_transfers.is_empty());
+    assert!(pfm.next.refunds_received.is_empty());
+    assert!(pfm.next.refunds_sent.is_empty());
+    assert!(pfm.next.ack_and_events_written.is_empty());
+}
