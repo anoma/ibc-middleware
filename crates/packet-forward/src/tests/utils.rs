@@ -12,7 +12,7 @@ pub mod addresses {
     pub const B: &str = "b1bertha";
     pub const C: &str = "c1copernicus";
     #[allow(dead_code)]
-    pub const D: &str = "c1dionysus";
+    pub const D: &str = "d1dionysus";
 
     pub const NULL: &str = "NULL";
     pub const ESCROW_ACCOUNT: &str = "b1escrowaccount";
