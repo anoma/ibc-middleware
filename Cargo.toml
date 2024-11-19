@@ -28,32 +28,32 @@ features = ["alloc", "derive"]
 
 [workspace.dependencies.ibc-core-router]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
 
 [workspace.dependencies.ibc-core-router-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
 
 [workspace.dependencies.ibc-core-host-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
 
 [workspace.dependencies.ibc-core-channel-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
 
 [workspace.dependencies.ibc-core-channel]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
 
 [workspace.dependencies.ibc-primitives]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
 
 [workspace.dependencies.ibc-app-transfer-types]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
 
 [workspace.dependencies.ibc-testkit]
 git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "42826d74f47959a4e9a000f90ff6ae569415ea48"
+rev = "aa229566e6bb688cc2626dab276c3849abc0c583"
