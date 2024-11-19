@@ -248,8 +248,8 @@ fn events_kept_on_errors() {
             &mut extras,
             Left((&packet, packet_data)),
             fwd_metadata,
-            addresses::A.to_string().into(),
-            addresses::ESCROW_ACCOUNT.to_string().into(),
+            addresses::A.signer(),
+            addresses::ESCROW_ACCOUNT.signer(),
             coin_on_this_chain,
         ),
     );
@@ -286,7 +286,7 @@ fn on_recv_packet_execute_inner(
             .unwrap(),
     };
 
-    pfm.on_recv_packet_execute_inner(&mut extras, &packet, &String::from("relayer").into())?;
+    pfm.on_recv_packet_execute_inner(&mut extras, &packet, &addresses::RELAYER.signer())?;
 
     let expected_extras = {
         let mut ex = ModuleExtras::empty();
@@ -323,7 +323,7 @@ fn on_recv_packet_execute_inner(
                 sequence: 0u64.into(),
             },
             InFlightPacket {
-                original_sender_address: addresses::A.to_string().into(),
+                original_sender_address: addresses::A.signer(),
                 refund_port_id: PortId::transfer(),
                 refund_channel_id: ChannelId::new(channels::BA),
                 packet_src_port_id: PortId::transfer(),
@@ -346,8 +346,8 @@ fn on_recv_packet_execute_inner(
             timeout_height_on_b: TimeoutHeight::Never,
             timeout_timestamp_on_b: pfm.next.timeout_timestamp(DEFAULT_FORWARD_TIMEOUT).unwrap(),
             packet_data: PacketData {
-                sender: addresses::ESCROW_ACCOUNT.to_string().into(),
-                receiver: addresses::C.to_string().into(),
+                sender: addresses::ESCROW_ACCOUNT.signer(),
+                receiver: addresses::C.signer(),
                 token: coin_on_this_chain,
                 memo: String::new().into(),
             },

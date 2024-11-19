@@ -15,7 +15,18 @@ pub mod addresses {
     pub const D: &str = "d1dionysus";
 
     pub const NULL: &str = "NULL";
+    pub const RELAYER: &str = "RELAYER";
     pub const ESCROW_ACCOUNT: &str = "b1escrowaccount";
+}
+
+pub trait StrExt {
+    fn signer(&self) -> Signer;
+}
+
+impl StrExt for str {
+    fn signer(&self) -> Signer {
+        self.to_string().into()
+    }
 }
 
 // NOTE: Assume we have three chains: A, B, and C. The tests will be set
@@ -356,7 +367,7 @@ impl<M> PfmContext for Store<M> {
         _channel: &ChannelId,
         _original_sender: &Signer,
     ) -> Result<Signer, Self::Error> {
-        Ok(addresses::ESCROW_ACCOUNT.to_string().into())
+        Ok(addresses::ESCROW_ACCOUNT.signer())
     }
 
     fn timeout_timestamp(
@@ -537,9 +548,9 @@ pub fn get_dummy_packet_data_with_memo(
     memo: String,
 ) -> PacketData {
     PacketData {
-        sender: addresses::A.to_string().into(),
+        sender: addresses::A.signer(),
         // NB: the ICS-20 receiver field is overriden
-        receiver: addresses::NULL.to_string().into(),
+        receiver: addresses::NULL.signer(),
         token: transfer_coin,
         memo: memo.into(),
     }
@@ -564,7 +575,7 @@ pub fn get_dummy_packet_with_data(seq: u64, packet_data: &PacketData) -> Packet 
 
 pub fn get_dummy_fwd_metadata() -> msg::ForwardMetadata {
     msg::ForwardMetadata {
-        receiver: addresses::C.to_string().into(),
+        receiver: addresses::C.signer(),
         port: PortId::transfer(),
         channel: ChannelId::new(channels::BC),
         timeout: None,
