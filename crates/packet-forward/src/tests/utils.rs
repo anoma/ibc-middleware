@@ -6,6 +6,16 @@ use ibc_testkit::testapp::ibc::applications::transfer::types::DummyTransferModul
 
 use super::*;
 
+pub mod addresses {
+    pub const A: &str = "a1arndt";
+    #[allow(dead_code)]
+    pub const B: &str = "b1bertha";
+    pub const C: &str = "c1copernicus";
+
+    pub const NULL: &str = "NULL";
+    pub const ESCROW_ACCOUNT: &str = "ibc-ics20-escrow-account";
+}
+
 // NOTE: Assume we have three chains: A, B, and C. The tests will be set
 // up as if we were chain B, forwarding a packet from A to C.
 pub mod channels {
@@ -26,8 +36,6 @@ pub mod base_denoms {
     pub const B: &str = "ubongus";
     pub const C: &str = "uchungus";
 }
-
-pub const ESCROW_ACCOUNT: &str = "ibc-ics20-escrow-account";
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FailurePoint {
@@ -340,7 +348,7 @@ impl<M> PfmContext for Store<M> {
         _channel: &ChannelId,
         _original_sender: &Signer,
     ) -> Result<Signer, Self::Error> {
-        Ok(ESCROW_ACCOUNT.to_string().into())
+        Ok(addresses::ESCROW_ACCOUNT.to_string().into())
     }
 
     fn timeout_timestamp(
@@ -516,8 +524,9 @@ pub fn get_dummy_packet_data_with_fwd_meta(
 
 pub fn get_dummy_packet_data_with_memo(transfer_amount: u64, memo: String) -> PacketData {
     PacketData {
-        sender: String::from("PACKET-SENDER").into(),
-        receiver: String::from("PACKET-RECEIVER").into(),
+        sender: addresses::A.to_string().into(),
+        // NB: the ICS-20 receiver field is overriden
+        receiver: addresses::NULL.to_string().into(),
         token: get_dummy_coin(transfer_amount),
         memo: memo.into(),
     }
@@ -542,7 +551,7 @@ pub fn get_dummy_packet_with_data(seq: u64, packet_data: &PacketData) -> Packet 
 
 pub fn get_dummy_fwd_metadata() -> msg::ForwardMetadata {
     msg::ForwardMetadata {
-        receiver: String::from("receiver-on-c").into(),
+        receiver: addresses::C.to_string().into(),
         port: PortId::transfer(),
         channel: ChannelId::new(channels::BC),
         timeout: None,

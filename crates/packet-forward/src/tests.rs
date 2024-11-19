@@ -209,9 +209,13 @@ fn events_kept_on_errors() {
             push_event_attr(
                 &mut attributes,
                 "escrow-account".to_owned(),
-                "Barbara".to_string(),
+                addresses::ESCROW_ACCOUNT.to_string(),
             );
-            push_event_attr(&mut attributes, "sender".to_owned(), "Bob".to_string());
+            push_event_attr(
+                &mut attributes,
+                "sender".to_owned(),
+                addresses::A.to_string(),
+            );
             push_event_attr(
                 &mut attributes,
                 "receiver".to_owned(),
@@ -238,8 +242,8 @@ fn events_kept_on_errors() {
             &mut extras,
             Left((&packet, packet_data)),
             fwd_metadata,
-            String::from("Bob").into(),
-            String::from("Barbara").into(),
+            addresses::A.to_string().into(),
+            addresses::ESCROW_ACCOUNT.to_string().into(),
             coin_on_this_chain,
         ),
     );
