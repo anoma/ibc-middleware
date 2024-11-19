@@ -259,9 +259,9 @@ fn events_kept_on_errors() {
 }
 
 fn on_recv_packet_execute_inner(
+    pfm: &mut DummyPfm,
     transfer_coin: Coin<PrefixedDenom>,
 ) -> Result<(), crate::MiddlewareError> {
-    let mut pfm = get_dummy_pfm();
     let mut extras = ModuleExtras::empty();
 
     let packet_data = get_dummy_packet_data_with_fwd_meta(
@@ -270,7 +270,7 @@ fn on_recv_packet_execute_inner(
             forward: get_dummy_fwd_metadata(),
         },
     );
-    let packet = get_dummy_packet_with_data(0, &packet_data);
+    let packet = get_dummy_packet_with_data(pfm.next.sent_transfers.len() as u64, &packet_data);
 
     let coin_on_this_chain = Coin {
         amount: transfer_coin.amount,
@@ -357,8 +357,85 @@ fn on_recv_packet_execute_inner(
     Ok(())
 }
 
+// NB: assume we called `on_recv_packet_execute_inner` prior
+// to this call
+fn on_acknowledgement_packet_execute_inner(
+    pfm: &mut DummyPfm,
+    transfer_coin: Coin<PrefixedDenom>,
+) -> Result<(), crate::MiddlewareError> {
+    let mut extras = ModuleExtras::empty();
+
+    let last_seq_no_u64 = pfm.next.sent_transfers.len() as u64 - 1;
+    let last_seq_no = Sequence::from(last_seq_no_u64);
+    let last_sent_transfer = pfm.next.sent_transfers.last().unwrap();
+
+    assert_eq!(last_sent_transfer.port_id_on_a, PortId::transfer());
+    assert_eq!(
+        last_sent_transfer.chan_id_on_a,
+        ChannelId::new(channels::BC)
+    );
+
+    // reconstruct the initial packet:
+    //
+    // A => B => C
+    // [ fwd ]
+    //
+    let packet_a_b = {
+        let packet_data = get_dummy_packet_data_with_fwd_meta(
+            transfer_coin,
+            msg::PacketMetadata {
+                forward: get_dummy_fwd_metadata(),
+            },
+        );
+        get_dummy_packet_with_data(last_seq_no_u64, &packet_data)
+    };
+
+    // reconstruct the forwarded packet:
+    //
+    // A => B => C
+    //     [ fwd ]
+    //
+    let packet_b_c = Packet {
+        data: serde_json::to_vec(&last_sent_transfer.packet_data).unwrap(),
+        seq_on_a: last_seq_no,
+        port_id_on_a: PortId::transfer(),
+        chan_id_on_a: ChannelId::new(channels::BC),
+        port_id_on_b: PortId::transfer(),
+        chan_id_on_b: ChannelId::new(channels::CB),
+        timeout_height_on_b: last_sent_transfer.timeout_height_on_b,
+        timeout_timestamp_on_b: last_sent_transfer.timeout_timestamp_on_b,
+    };
+
+    let inflight_packet_key = InFlightPacketKey {
+        port: PortId::transfer(),
+        channel: ChannelId::new(channels::BC),
+        sequence: last_seq_no,
+    };
+
+    assert!(pfm
+        .next
+        .inflight_packet_store
+        .contains_key(&inflight_packet_key));
+
+    let ack_from_c =
+        AcknowledgementStatus::success(AckStatusValue::new("Ack from chain C").unwrap()).into();
+    pfm.on_acknowledgement_packet_execute_inner(&mut extras, &packet_b_c, &ack_from_c)?;
+
+    let (got_packet, got_ack) = pfm.next.ack_and_events_written.last().unwrap();
+
+    assert_eq!(got_packet, &packet_a_b);
+    assert_eq!(got_ack, &ack_from_c);
+
+    assert!(!pfm
+        .next
+        .inflight_packet_store
+        .contains_key(&inflight_packet_key));
+
+    Ok(())
+}
+
 #[test]
-fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
+fn happy_flow_from_a_to_c() -> Result<(), crate::MiddlewareError> {
     const TRANSFER_AMOUNT: u64 = 100;
 
     let transfer_port = PortId::transfer();
@@ -426,10 +503,14 @@ fn on_recv_packet_execute_happy_flow() -> Result<(), crate::MiddlewareError> {
     ];
 
     for denom in denoms {
-        on_recv_packet_execute_inner(Coin {
+        let mut pfm = get_dummy_pfm();
+        let coin = Coin {
             denom,
             amount: TRANSFER_AMOUNT.into(),
-        })?;
+        };
+
+        on_recv_packet_execute_inner(&mut pfm, coin.clone())?;
+        on_acknowledgement_packet_execute_inner(&mut pfm, coin)?;
     }
 
     Ok(())

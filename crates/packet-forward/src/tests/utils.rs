@@ -507,7 +507,9 @@ fn failure_injection_err_msg(point: FailurePoint) -> String {
     format!("Failure injection on {point:?}")
 }
 
-pub fn get_dummy_pfm() -> PacketForwardMiddleware<Store<DummyTransferModule>> {
+pub type DummyPfm = PacketForwardMiddleware<Store<DummyTransferModule>>;
+
+pub fn get_dummy_pfm() -> DummyPfm {
     PacketForwardMiddleware::next(Store::new(DummyTransferModule::new()))
 }
 
