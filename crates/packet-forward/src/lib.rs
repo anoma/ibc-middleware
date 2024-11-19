@@ -344,21 +344,26 @@ where
         inflight_packet: InFlightPacket,
         acknowledgement: &Acknowledgement,
     ) -> Result<(), MiddlewareError> {
-        self.next
-            .receive_refund_execute(packet, transfer_pkt)
-            .map_err(|err| {
-                MiddlewareError::Message(format!(
-                    "Failed to refund transfer sent to next hop: {err}"
-                ))
-            })?;
+        let ack: AcknowledgementStatus = serde_json::from_slice(acknowledgement.as_bytes())
+            .map_err(|err| MiddlewareError::Message(format!("Failed to parse ack: {err}")))?;
 
-        self.next
-            .send_refund_execute(&inflight_packet)
-            .map_err(|err| {
-                MiddlewareError::Message(format!(
-                    "Failed to refund transfer received from previous hop: {err}"
-                ))
-            })?;
+        if !ack.is_successful() {
+            self.next
+                .receive_refund_execute(packet, transfer_pkt)
+                .map_err(|err| {
+                    MiddlewareError::Message(format!(
+                        "Failed to refund transfer sent to next hop: {err}"
+                    ))
+                })?;
+
+            self.next
+                .send_refund_execute(&inflight_packet)
+                .map_err(|err| {
+                    MiddlewareError::Message(format!(
+                        "Failed to refund transfer received from previous hop: {err}"
+                    ))
+                })?;
+        }
 
         self.next
             .write_ack_and_events(&inflight_packet.into(), acknowledgement)
