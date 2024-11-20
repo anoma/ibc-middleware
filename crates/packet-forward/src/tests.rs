@@ -634,3 +634,64 @@ fn non_existent_inflight_packet_not_handled_by_pfm() {
         Err(MiddlewareError::ForwardToNextMiddleware)
     ));
 }
+
+#[test]
+fn no_retry_if_not_pfm_packet() {
+    let pfm = get_dummy_pfm();
+
+    assert!(pfm.next.inflight_packet_store.is_empty());
+
+    let packet_data = get_dummy_packet_data(get_dummy_coin(100));
+    let packet = get_dummy_packet_with_data(0, &packet_data);
+
+    assert!(matches!(
+        pfm.timeout_should_retry(&packet),
+        Err(MiddlewareError::ForwardToNextMiddleware)
+    ));
+}
+
+#[test]
+fn retry_until_exhausted() {
+    let mut pfm = get_dummy_pfm();
+
+    let packet_data = get_dummy_packet_data(get_dummy_coin(100));
+    let packet = get_dummy_packet_with_data(0, &packet_data);
+
+    let inflight_packet_key = InFlightPacketKey {
+        port: packet.port_id_on_a.clone(),
+        channel: packet.chan_id_on_a.clone(),
+        sequence: packet.seq_on_a,
+    };
+    let mut inflight_packet = InFlightPacket {
+        original_sender_address: String::new().into(),
+        refund_port_id: PortId::transfer(),
+        refund_channel_id: packet.chan_id_on_b.clone(),
+        packet_src_port_id: PortId::transfer(),
+        packet_src_channel_id: packet.chan_id_on_a.clone(),
+        packet_timeout_timestamp: packet.timeout_timestamp_on_b,
+        packet_timeout_height: packet.timeout_height_on_b,
+        refund_sequence: packet.seq_on_a,
+        retries_remaining: NonZeroU8::new(1),
+        timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
+        packet_data,
+    };
+
+    pfm.next
+        .inflight_packet_store
+        .insert(inflight_packet_key.clone(), inflight_packet.clone());
+
+    assert!(matches!(
+        pfm.timeout_should_retry(&packet),
+        Ok((RetryOutcome::GoAhead, pkt)) if pkt == inflight_packet
+    ));
+
+    inflight_packet.retries_remaining = None;
+    pfm.next
+        .inflight_packet_store
+        .insert(inflight_packet_key, inflight_packet.clone());
+
+    assert!(matches!(
+        pfm.timeout_should_retry(&packet),
+        Ok((RetryOutcome::MaxRetriesExceeded, pkt)) if pkt == inflight_packet
+    ));
+}
