@@ -363,6 +363,8 @@ fn on_recv_packet_execute_inner(
 fn on_acknowledgement_packet_execute_inner(
     pfm: &mut DummyPfm,
     transfer_coin: Coin<PrefixedDenom>,
+    ack_from_c: &Acknowledgement,
+    extra_assertions: impl FnOnce(InFlightPacket, &mut DummyPfm),
 ) -> Result<(), crate::MiddlewareError> {
     let mut extras = ModuleExtras::empty();
 
@@ -413,30 +415,39 @@ fn on_acknowledgement_packet_execute_inner(
         sequence: last_seq_no,
     };
 
-    assert!(pfm
+    let Some(inflight_packet) = pfm
         .next
         .inflight_packet_store
-        .contains_key(&inflight_packet_key));
+        .get(&inflight_packet_key)
+        .cloned()
+    else {
+        panic!("In-flight packet should have been stored");
+    };
 
-    let ack_from_c =
-        AcknowledgementStatus::success(AckStatusValue::new("Ack from chain C").unwrap()).into();
-    pfm.on_acknowledgement_packet_execute_inner(&mut extras, &packet_b_c, &ack_from_c)?;
+    assert!(pfm.next.refunds_received.is_empty());
+    assert!(pfm.next.refunds_sent.is_empty());
+
+    pfm.on_acknowledgement_packet_execute_inner(&mut extras, &packet_b_c, ack_from_c)?;
 
     let (got_packet, got_ack) = pfm.next.ack_and_events_written.last().unwrap();
 
     assert_eq!(got_packet, &packet_a_b);
-    assert_eq!(got_ack, &ack_from_c);
+    assert_eq!(got_ack, ack_from_c);
 
     assert!(!pfm
         .next
         .inflight_packet_store
         .contains_key(&inflight_packet_key));
 
+    extra_assertions(inflight_packet, pfm);
+
     Ok(())
 }
 
-#[test]
-fn happy_flow_from_a_to_c() -> Result<(), crate::MiddlewareError> {
+fn no_timeout_packet_flow_inner(
+    ack_from_c: &Acknowledgement,
+    mut assertions_after_ack_exec: impl FnMut(InFlightPacket, &mut DummyPfm),
+) -> Result<(), crate::MiddlewareError> {
     const TRANSFER_AMOUNT: u64 = 100;
 
     let transfer_port = PortId::transfer();
@@ -511,10 +522,54 @@ fn happy_flow_from_a_to_c() -> Result<(), crate::MiddlewareError> {
         };
 
         on_recv_packet_execute_inner(&mut pfm, coin.clone())?;
-        on_acknowledgement_packet_execute_inner(&mut pfm, coin)?;
+
+        on_acknowledgement_packet_execute_inner(
+            &mut pfm,
+            coin,
+            ack_from_c,
+            &mut assertions_after_ack_exec,
+        )?;
     }
 
     Ok(())
+}
+
+#[test]
+fn happy_flow_from_a_to_c() -> Result<(), crate::MiddlewareError> {
+    let ack_from_c =
+        AcknowledgementStatus::success(AckStatusValue::new("Ack from chain C").unwrap()).into();
+    no_timeout_packet_flow_inner(&ack_from_c, |_, pfm| {
+        assert!(pfm.next.refunds_received.is_empty());
+        assert!(pfm.next.refunds_sent.is_empty());
+    })
+}
+
+#[test]
+fn ack_error_from_a_to_c() -> Result<(), crate::MiddlewareError> {
+    let ack_from_c =
+        AcknowledgementStatus::error(AckStatusValue::new("Ack err from chain C").unwrap()).into();
+    no_timeout_packet_flow_inner(&ack_from_c, |refund_inflight_packet, pfm| {
+        let last_seq_no_u64 = pfm.next.sent_transfers.len() as u64 - 1;
+        let last_seq_no = Sequence::from(last_seq_no_u64);
+        let last_sent_transfer = pfm.next.sent_transfers.last().unwrap();
+
+        let packet_b_c = Packet {
+            data: serde_json::to_vec(&last_sent_transfer.packet_data).unwrap(),
+            seq_on_a: last_seq_no,
+            port_id_on_a: PortId::transfer(),
+            chan_id_on_a: ChannelId::new(channels::BC),
+            port_id_on_b: PortId::transfer(),
+            chan_id_on_b: ChannelId::new(channels::CB),
+            timeout_height_on_b: last_sent_transfer.timeout_height_on_b,
+            timeout_timestamp_on_b: last_sent_transfer.timeout_timestamp_on_b,
+        };
+
+        assert_eq!(
+            pfm.next.refunds_received,
+            vec![(packet_b_c, last_sent_transfer.packet_data.clone())]
+        );
+        assert_eq!(pfm.next.refunds_sent, vec![refund_inflight_packet]);
+    })
 }
 
 #[test]
