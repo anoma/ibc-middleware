@@ -642,16 +642,6 @@ where
         }
     }
 
-    fn on_acknowledgement_packet_validate(
-        &self,
-        packet: &Packet,
-        acknowledgement: &Acknowledgement,
-        relayer: &Signer,
-    ) -> Result<(), PacketError> {
-        self.next
-            .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
-    }
-
     fn on_acknowledgement_packet_execute(
         &mut self,
         packet: &Packet,
@@ -667,14 +657,6 @@ where
                 .on_acknowledgement_packet_execute(packet, acknowledgement, relayer),
             Err(MiddlewareError::Message(err)) => (extras, new_packet_error(err)),
         }
-    }
-
-    fn on_timeout_packet_validate(
-        &self,
-        packet: &Packet,
-        relayer: &Signer,
-    ) -> Result<(), PacketError> {
-        self.next.on_timeout_packet_validate(packet, relayer)
     }
 
     fn on_timeout_packet_execute(
@@ -696,6 +678,26 @@ where
     // =========================================================================
     // the calls below are simply forwarded to the next middleware
     // =========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn on_acknowledgement_packet_validate(
+        &self,
+        packet: &Packet,
+        acknowledgement: &Acknowledgement,
+        relayer: &Signer,
+    ) -> Result<(), PacketError> {
+        self.next
+            .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn on_timeout_packet_validate(
+        &self,
+        packet: &Packet,
+        relayer: &Signer,
+    ) -> Result<(), PacketError> {
+        self.next.on_timeout_packet_validate(packet, relayer)
+    }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_init_validate(
