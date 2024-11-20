@@ -560,8 +560,24 @@ where
         relayer: &Signer,
     ) -> Result<(), MiddlewareError> {
         let transfer_pkt = decode_ics20_msg(packet)?;
+        let should_retry = self.timeout_should_retry(packet)?;
 
-        match self.timeout_should_retry(packet)? {
+        // NB: this is a PFM in-flight packet, remove
+        // the attempt from storage
+        let inflight_packet_key = InFlightPacketKey {
+            port: packet.port_id_on_a.clone(),
+            channel: packet.chan_id_on_a.clone(),
+            sequence: packet.seq_on_a,
+        };
+        self.next
+            .delete_inflight_packet(&inflight_packet_key)
+            .map_err(|err| {
+                MiddlewareError::Message(format!(
+                    "Failed to delete in-flight packet from storage: {err}"
+                ))
+            })?;
+
+        match should_retry {
             (RetryOutcome::GoAhead, inflight_packet) => {
                 let (next_extras, result) = self.next.on_timeout_packet_execute(packet, relayer);
 
@@ -582,20 +598,6 @@ where
                 )
             }
             (RetryOutcome::MaxRetriesExceeded, inflight_packet) => {
-                let inflight_packet_key = InFlightPacketKey {
-                    port: packet.port_id_on_a.clone(),
-                    channel: packet.chan_id_on_a.clone(),
-                    sequence: packet.seq_on_a,
-                };
-
-                self.next
-                    .delete_inflight_packet(&inflight_packet_key)
-                    .map_err(|err| {
-                        MiddlewareError::Message(format!(
-                            "Failed to delete in-flight packet from storage: {err}"
-                        ))
-                    })?;
-
                 let acknowledgement = {
                     let InFlightPacket {
                         refund_sequence,
