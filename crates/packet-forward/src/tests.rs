@@ -444,15 +444,10 @@ fn on_acknowledgement_packet_execute_inner(
     Ok(())
 }
 
-fn no_timeout_packet_flow_inner(
-    ack_from_c: &Acknowledgement,
-    mut assertions_after_ack_exec: impl FnMut(InFlightPacket, &mut DummyPfm),
-) -> Result<(), crate::MiddlewareError> {
-    const TRANSFER_AMOUNT: u64 = 100;
-
+fn all_denoms() -> Vec<PrefixedDenom> {
     let transfer_port = PortId::transfer();
 
-    let denoms = vec![
+    vec![
         // A => B
         PrefixedDenom {
             base_denom: base_denoms::A.parse().unwrap(),
@@ -505,16 +500,23 @@ fn no_timeout_packet_flow_inner(
                     ChannelId::new(channels::BC),
                 ));
                 trace.add_prefix(TracePrefix::new(
-                    transfer_port.clone(),
+                    transfer_port,
                     // landed on A
                     ChannelId::new(channels::AB),
                 ));
                 trace
             },
         },
-    ];
+    ]
+}
 
-    for denom in denoms {
+fn no_timeout_packet_flow_inner(
+    ack_from_c: &Acknowledgement,
+    mut assertions_after_ack_exec: impl FnMut(InFlightPacket, &mut DummyPfm),
+) -> Result<(), crate::MiddlewareError> {
+    const TRANSFER_AMOUNT: u64 = 100;
+
+    for denom in all_denoms() {
         let mut pfm = get_dummy_pfm();
         let coin = Coin {
             denom,
