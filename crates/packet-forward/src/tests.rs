@@ -358,6 +358,23 @@ fn on_recv_packet_execute_inner(
     Ok(())
 }
 
+fn reconstruct_forwarded_packet(pfm: &DummyPfm) -> Packet {
+    let last_seq_no_u64 = pfm.next.sent_transfers.len() as u64 - 1;
+    let last_seq_no = Sequence::from(last_seq_no_u64);
+    let last_sent_transfer = pfm.next.sent_transfers.last().unwrap();
+
+    Packet {
+        data: serde_json::to_vec(&last_sent_transfer.packet_data).unwrap(),
+        seq_on_a: last_seq_no,
+        port_id_on_a: PortId::transfer(),
+        chan_id_on_a: ChannelId::new(channels::BC),
+        port_id_on_b: PortId::transfer(),
+        chan_id_on_b: ChannelId::new(channels::CB),
+        timeout_height_on_b: last_sent_transfer.timeout_height_on_b,
+        timeout_timestamp_on_b: last_sent_transfer.timeout_timestamp_on_b,
+    }
+}
+
 // NB: assume we called `on_recv_packet_execute_inner` prior
 // to this call
 fn on_acknowledgement_packet_execute_inner(
@@ -390,7 +407,7 @@ fn on_acknowledgement_packet_execute_inner(
                 forward: get_dummy_fwd_metadata(),
             },
         );
-        get_dummy_packet_with_data(last_seq_no_u64, &packet_data)
+        get_dummy_packet_with_data(0, &packet_data)
     };
 
     // reconstruct the forwarded packet:
@@ -398,16 +415,7 @@ fn on_acknowledgement_packet_execute_inner(
     // A => B => C
     //     [ fwd ]
     //
-    let packet_b_c = Packet {
-        data: serde_json::to_vec(&last_sent_transfer.packet_data).unwrap(),
-        seq_on_a: last_seq_no,
-        port_id_on_a: PortId::transfer(),
-        chan_id_on_a: ChannelId::new(channels::BC),
-        port_id_on_b: PortId::transfer(),
-        chan_id_on_b: ChannelId::new(channels::CB),
-        timeout_height_on_b: last_sent_transfer.timeout_height_on_b,
-        timeout_timestamp_on_b: last_sent_transfer.timeout_timestamp_on_b,
-    };
+    let packet_b_c = reconstruct_forwarded_packet(pfm);
 
     let inflight_packet_key = InFlightPacketKey {
         port: PortId::transfer(),
@@ -696,4 +704,174 @@ fn retry_until_exhausted() {
         pfm.timeout_should_retry(&packet),
         Ok((RetryOutcome::MaxRetriesExceeded, pkt)) if pkt == inflight_packet
     ));
+}
+
+fn on_timeout_packet_execute_inner(
+    pfm: &mut DummyPfm,
+    transfer_coin: Coin<PrefixedDenom>,
+) -> Result<bool, crate::MiddlewareError> {
+    let mut extras = ModuleExtras::empty();
+
+    let packet_b_c = reconstruct_forwarded_packet(pfm);
+
+    let timed_out_inflight = {
+        assert_eq!(pfm.next.inflight_packet_store.len(), 1);
+        let inflight_packet = pfm.next.inflight_packet_store.values().next().unwrap();
+        if inflight_packet.retries_remaining.is_none() {
+            Some(inflight_packet.clone())
+        } else {
+            None
+        }
+    };
+
+    pfm.on_timeout_packet_execute_inner(&mut extras, &packet_b_c, &addresses::RELAYER.signer())?;
+
+    if let Some(timed_out_inflight) = timed_out_inflight {
+        assert!(pfm.next.inflight_packet_store.is_empty());
+        assert_eq!(pfm.next.sent_transfers.len(), 1);
+
+        let packet_a_b = {
+            let packet_data = get_dummy_packet_data_with_fwd_meta(
+                transfer_coin,
+                msg::PacketMetadata {
+                    forward: get_dummy_fwd_metadata(),
+                },
+            );
+            get_dummy_packet_with_data(0, &packet_data)
+        };
+        let refund_sequence = 0;
+        let refund_port_id = PortId::transfer();
+        let refund_channel_id = ChannelId::new(channels::BA);
+        let expected_ack = new_error_ack(format!(
+            "In-flight packet max retries exceeded, for packet with sequence \
+             {refund_sequence} on {refund_port_id}/{refund_channel_id}"
+        ))
+        .into();
+        assert_eq!(
+            pfm.next.ack_and_events_written,
+            vec![(packet_a_b, expected_ack)]
+        );
+
+        let packet_b_c = reconstruct_forwarded_packet(pfm);
+        let packet_data: PacketData = serde_json::from_slice(&packet_b_c.data).unwrap();
+        assert_eq!(pfm.next.refunds_received, vec![(packet_b_c, packet_data)]);
+        assert_eq!(pfm.next.refunds_sent, vec![timed_out_inflight]);
+
+        return Ok(false);
+    }
+
+    let expected_extras = {
+        let mut ex = ModuleExtras::empty();
+        emit_event_with_attrs(
+            &mut ex,
+            vec![
+                event_attr("is-retry", "true"),
+                event_attr("escrow-account", addresses::ESCROW_ACCOUNT),
+                event_attr("sender", addresses::A),
+                event_attr("receiver", addresses::C),
+                event_attr("port", "transfer"),
+                event_attr("channel", ChannelId::new(channels::BC).to_string()),
+            ],
+        );
+        emit_event_with_attrs(
+            &mut ex,
+            vec![event_attr("info", "Packet has been successfully forwarded")],
+        );
+        ex
+    };
+    assert_eq!(extras.log, expected_extras.log);
+    assert_eq!(extras.events, expected_extras.events);
+
+    assert_eq!(pfm.next.sent_transfers.len(), 2);
+    assert!(pfm
+        .next
+        .sent_transfers
+        .iter()
+        .reduce(|t1, t2| {
+            if t1 != t2 {
+                panic!("All transfers should have been equal");
+            }
+            t1
+        })
+        .is_some());
+
+    assert!(pfm.next.refunds_received.is_empty());
+    assert!(pfm.next.refunds_sent.is_empty());
+    assert!(pfm.next.ack_and_events_written.is_empty());
+
+    let packet_data = get_dummy_packet_data_with_fwd_meta(
+        transfer_coin,
+        msg::PacketMetadata {
+            forward: get_dummy_fwd_metadata(),
+        },
+    );
+    assert_eq!(
+        pfm.next.inflight_packet_store,
+        HashMap::from_iter([(
+            InFlightPacketKey {
+                port: PortId::transfer(),
+                channel: ChannelId::new(channels::BC),
+                sequence: 1u64.into(),
+            },
+            InFlightPacket {
+                original_sender_address: addresses::A.signer(),
+                refund_port_id: PortId::transfer(),
+                refund_channel_id: ChannelId::new(channels::BA),
+                packet_src_port_id: PortId::transfer(),
+                packet_src_channel_id: ChannelId::new(channels::AB),
+                packet_timeout_timestamp: TimeoutTimestamp::Never,
+                packet_timeout_height: TimeoutHeight::Never,
+                refund_sequence: 0u64.into(),
+                retries_remaining: None,
+                timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
+                packet_data,
+            },
+        )])
+    );
+
+    Ok(true)
+}
+
+fn timeout_packet_flow_inner(has_retries_left: bool) -> Result<(), crate::MiddlewareError> {
+    const TRANSFER_AMOUNT: u64 = 100;
+
+    for denom in all_denoms() {
+        let mut pfm = get_dummy_pfm();
+        let coin = Coin {
+            denom,
+            amount: TRANSFER_AMOUNT.into(),
+        };
+
+        on_recv_packet_execute_inner(&mut pfm, coin.clone())?;
+
+        if !has_retries_left {
+            let inflight_packet = pfm.next.inflight_packet_store.values_mut().next().unwrap();
+            inflight_packet.retries_remaining = None;
+        }
+
+        let packet_went_through = on_timeout_packet_execute_inner(&mut pfm, coin.clone())?;
+        assert_eq!(packet_went_through, has_retries_left);
+
+        if packet_went_through {
+            let ack_from_c =
+                AcknowledgementStatus::success(AckStatusValue::new("Ack from chain C").unwrap())
+                    .into();
+            on_acknowledgement_packet_execute_inner(&mut pfm, coin, &ack_from_c, |_, pfm| {
+                assert!(pfm.next.refunds_received.is_empty());
+                assert!(pfm.next.refunds_sent.is_empty());
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
+fn happy_flow_timeout_retry_from_a_to_c() -> Result<(), crate::MiddlewareError> {
+    timeout_packet_flow_inner(true)
+}
+
+#[test]
+fn max_retries_exceeded_timeout_retry_from_a_to_c() -> Result<(), crate::MiddlewareError> {
+    timeout_packet_flow_inner(false)
 }
