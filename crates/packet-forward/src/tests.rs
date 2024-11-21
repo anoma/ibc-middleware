@@ -875,3 +875,11 @@ fn happy_flow_timeout_retry_from_a_to_c() -> Result<(), crate::MiddlewareError> 
 fn max_retries_exceeded_timeout_retry_from_a_to_c() -> Result<(), crate::MiddlewareError> {
     timeout_packet_flow_inner(false)
 }
+
+// TODO: retry fwd on timeout until we succeed,
+// and check that inflight packet store is empty
+// at the end
+
+// TODO: test forwarding from chain A to D. the next memo
+// should be filled in with PFM instructions for chain C
+// to forward to D
