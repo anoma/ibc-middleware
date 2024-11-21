@@ -624,6 +624,7 @@ where
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<M> IbcCoreModule for PacketForwardMiddleware<M>
 where
     M: IbcCoreModule + PfmContext,
@@ -681,7 +682,6 @@ where
     // the calls below are simply forwarded to the next middleware
     // =========================================================================
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_acknowledgement_packet_validate(
         &self,
         packet: &Packet,
@@ -692,7 +692,6 @@ where
             .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_timeout_packet_validate(
         &self,
         packet: &Packet,
@@ -701,7 +700,6 @@ where
         self.next.on_timeout_packet_validate(packet, relayer)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_init_validate(
         &self,
         order: Order,
@@ -721,7 +719,6 @@ where
         )
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_init_execute(
         &mut self,
         order: Order,
@@ -741,7 +738,6 @@ where
         )
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_try_validate(
         &self,
         order: Order,
@@ -761,7 +757,6 @@ where
         )
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_try_execute(
         &mut self,
         order: Order,
@@ -781,7 +776,6 @@ where
         )
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_ack_validate(
         &self,
         port_id: &PortId,
@@ -792,7 +786,6 @@ where
             .on_chan_open_ack_validate(port_id, channel_id, counterparty_version)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_ack_execute(
         &mut self,
         port_id: &PortId,
@@ -803,7 +796,6 @@ where
             .on_chan_open_ack_execute(port_id, channel_id, counterparty_version)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_confirm_validate(
         &self,
         port_id: &PortId,
@@ -812,7 +804,6 @@ where
         self.next.on_chan_open_confirm_validate(port_id, channel_id)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_open_confirm_execute(
         &mut self,
         port_id: &PortId,
@@ -821,7 +812,6 @@ where
         self.next.on_chan_open_confirm_execute(port_id, channel_id)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_close_init_validate(
         &self,
         port_id: &PortId,
@@ -830,7 +820,6 @@ where
         self.next.on_chan_close_init_validate(port_id, channel_id)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_close_init_execute(
         &mut self,
         port_id: &PortId,
@@ -839,7 +828,6 @@ where
         self.next.on_chan_close_init_execute(port_id, channel_id)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_close_confirm_validate(
         &self,
         port_id: &PortId,
@@ -849,7 +837,6 @@ where
             .on_chan_close_confirm_validate(port_id, channel_id)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_chan_close_confirm_execute(
         &mut self,
         port_id: &PortId,
