@@ -13,7 +13,11 @@ version.workspace = true
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
 
+[features]
+borsh = ["dep:borsh"]
+
 [dependencies]
+borsh = { workspace = true, optional = true }
 dur.workspace = true
 either.workspace = true
 ibc-app-transfer-types.workspace = true

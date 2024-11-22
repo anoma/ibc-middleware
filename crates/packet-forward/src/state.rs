@@ -1,5 +1,7 @@
 use core::num::NonZeroU8;
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
 use ibc_app_transfer_types::packet::PacketData;
 use ibc_core_channel_types::packet::Packet;
 use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
@@ -25,6 +27,7 @@ pub struct InFlightPacketKey {
 /// Packet that is currently being transmitted to a destination
 /// chain over multiple hops.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+#[cfg_attr(feature = "borsh", derive(BorshDeserialize, BorshSerialize))]
 pub struct InFlightPacket {
     /// Sender of the packet on the source chain.
     pub original_sender_address: Signer,

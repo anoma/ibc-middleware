@@ -1254,6 +1254,7 @@ dependencies = [
 name = "ibc-middleware-packet-forward"
 version = "0.1.0"
 dependencies = [
+ "borsh",
  "dur",
  "either",
  "ibc-app-transfer-types",

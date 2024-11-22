@@ -79,6 +79,9 @@ where
 pub use duration::Duration;
 
 mod duration {
+    #[cfg(feature = "borsh")]
+    use borsh::{BorshDeserialize, BorshSerialize};
+
     use super::*;
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -127,6 +130,25 @@ mod duration {
     #[serde(from = "AllDuration")]
     #[repr(transparent)]
     pub struct Duration(#[serde(serialize_with = "serialize_to_str")] pub dur::Duration);
+
+    #[cfg(feature = "borsh")]
+    impl BorshSerialize for Duration {
+        fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+            let nanos = self.0.as_nanos().to_le_bytes();
+            writer.write_all(&nanos)
+        }
+    }
+
+    #[cfg(feature = "borsh")]
+    impl BorshDeserialize for Duration {
+        fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Duration> {
+            let mut buf = [0u8; 16];
+            reader.read_exact(&mut buf)?;
+
+            let nanos = u128::from_le_bytes(buf);
+            Ok(Duration(dur::Duration::from_nanos(nanos)))
+        }
+    }
 }
 
 #[cfg(test)]
