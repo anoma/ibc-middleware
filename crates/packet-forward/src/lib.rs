@@ -35,7 +35,7 @@ use ibc_primitives::prelude::*;
 use ibc_primitives::Signer;
 
 #[doc(inline)]
-pub use self::msg::Duration;
+pub use self::msg::{Duration, ForwardMetadata, PacketMetadata};
 #[doc(inline)]
 pub use self::state::{InFlightPacket, InFlightPacketKey};
 
