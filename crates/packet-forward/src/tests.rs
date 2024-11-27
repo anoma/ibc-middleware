@@ -1034,10 +1034,127 @@ fn get_denom_for_this_chain_works_as_expected() {
     assert_eq!(expected_denom, got_denom);
 }
 
-// TODO: retry fwd on timeout until we succeed,
-// and check that inflight packet store is empty
-// at the end
-
 // TODO: test forwarding from chain A to D. the next memo
 // should be filled in with PFM instructions for chain C
 // to forward to D
+#[test]
+fn transfer_ad_includes_next_memo_cd_in_b() {
+    let mut pfm = get_dummy_pfm();
+
+    let mut extras = ModuleExtras::empty();
+
+    let next_memo = msg::PacketMetadata {
+        forward: msg::ForwardMetadata {
+            receiver: addresses::D.signer(),
+            port: PortId::transfer(),
+            channel: ChannelId::new(channels::CD),
+            timeout: None,
+            retries: None,
+            next: None,
+        },
+    };
+    let memo = msg::PacketMetadata {
+        forward: msg::ForwardMetadata {
+            receiver: addresses::NULL.signer(),
+            port: PortId::transfer(),
+            channel: ChannelId::new(channels::BC),
+            timeout: None,
+            retries: None,
+            next: Some({
+                let Ok(serde_json::Value::Object(next)) = serde_json::to_value(&next_memo) else {
+                    panic!("Should have gotten JSON object");
+                };
+                next
+            }),
+        },
+    };
+    let packet_data = get_dummy_packet_data_with_fwd_meta(get_dummy_coin(100), memo);
+    let packet = get_dummy_packet_with_data(0, &packet_data);
+
+    pfm.on_recv_packet_execute_inner(&mut extras, &packet, &addresses::RELAYER.signer())
+        .unwrap();
+
+    let expected_extras = {
+        let mut ex = ModuleExtras::empty();
+        emit_event_with_attrs(
+            &mut ex,
+            vec![
+                event_attr("is-retry", "false"),
+                event_attr("escrow-account", addresses::ESCROW_ACCOUNT),
+                event_attr("sender", addresses::A),
+                event_attr("receiver", addresses::NULL),
+                event_attr("port", "transfer"),
+                event_attr("channel", ChannelId::new(channels::BC).to_string()),
+            ],
+        );
+        emit_event_with_attrs(
+            &mut ex,
+            vec![event_attr("info", "Packet has been successfully forwarded")],
+        );
+        ex
+    };
+    assert_eq!(extras.log, expected_extras.log);
+    assert_eq!(extras.events, expected_extras.events);
+
+    assert!(pfm.next.refunds_received.is_empty());
+    assert!(pfm.next.refunds_sent.is_empty());
+    assert!(pfm.next.ack_and_events_written.is_empty());
+
+    assert_eq!(
+        pfm.next.inflight_packet_store,
+        HashMap::from_iter([(
+            InFlightPacketKey {
+                port: PortId::transfer(),
+                channel: ChannelId::new(channels::BC),
+                sequence: 0u64.into(),
+            },
+            InFlightPacket {
+                original_sender_address: addresses::A.signer(),
+                refund_port_id: PortId::transfer(),
+                refund_channel_id: ChannelId::new(channels::BA),
+                packet_src_port_id: PortId::transfer(),
+                packet_src_channel_id: ChannelId::new(channels::AB),
+                packet_timeout_timestamp: TimeoutTimestamp::Never,
+                packet_timeout_height: TimeoutHeight::Never,
+                refund_sequence: 0u64.into(),
+                retries_remaining: Some(DEFAULT_FORWARD_RETRIES),
+                timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
+                packet_data: serde_json::to_vec(&packet_data).unwrap(),
+            },
+        )])
+    );
+
+    assert_eq!(
+        pfm.next.sent_transfers,
+        vec![MsgTransfer {
+            port_id_on_a: PortId::transfer(),
+            chan_id_on_a: ChannelId::new(channels::BC),
+            timeout_height_on_b: TimeoutHeight::Never,
+            timeout_timestamp_on_b: pfm.next.timeout_timestamp(DEFAULT_FORWARD_TIMEOUT).unwrap(),
+            packet_data: PacketData {
+                sender: addresses::ESCROW_ACCOUNT.signer(),
+                receiver: addresses::NULL.signer(),
+                token: Coin {
+                    amount: 100u64.into(),
+                    denom: pfm
+                        .next
+                        .get_denom_for_this_chain(
+                            &packet.port_id_on_b,
+                            &packet.chan_id_on_b,
+                            &packet.port_id_on_a,
+                            &packet.chan_id_on_a,
+                            &get_dummy_coin(0).denom,
+                        )
+                        .unwrap(),
+                },
+                memo: serde_json::to_string(&serde_json::to_value(&next_memo).unwrap())
+                    .unwrap()
+                    .into(),
+            },
+        }]
+    );
+}
+
+// TODO: retry fwd on timeout until we succeed,
+// and check that inflight packet store is empty
+// at the end

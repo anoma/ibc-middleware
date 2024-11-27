@@ -10,7 +10,6 @@ pub mod addresses {
     #[allow(dead_code)]
     pub const B: &str = "b1bertha";
     pub const C: &str = "c1copernicus";
-    #[allow(dead_code)]
     pub const D: &str = "d1dionysus";
 
     pub const NULL: &str = "NULL";
@@ -39,7 +38,6 @@ pub mod channels {
     pub const BC: u64 = 2;
 
     // Outgoing channels from C.
-    #[allow(dead_code)]
     pub const CB: u64 = 3;
     pub const CD: u64 = 4;
 
