@@ -18,7 +18,7 @@ use core::num::NonZeroU8;
 use either::*;
 use ibc_app_transfer_types::msgs::transfer::MsgTransfer;
 use ibc_app_transfer_types::packet::PacketData;
-use ibc_app_transfer_types::{Coin, PrefixedDenom};
+use ibc_app_transfer_types::{Coin, PrefixedDenom, TracePrefix};
 use ibc_core_channel_types::acknowledgement::{
     Acknowledgement, AcknowledgementStatus, StatusValue as AckStatusValue,
 };
@@ -151,7 +151,22 @@ pub trait PfmContext {
         source_port: &PortId,
         source_chan: &ChannelId,
         source_denom: &PrefixedDenom,
-    ) -> Result<PrefixedDenom, Self::Error>;
+    ) -> Result<PrefixedDenom, Self::Error> {
+        let mut new_denom = source_denom.clone();
+
+        let source_chain_prefix = TracePrefix::new(source_port.clone(), source_chan.clone());
+
+        if source_denom.trace_path.starts_with(&source_chain_prefix) {
+            new_denom.trace_path.remove_prefix(&source_chain_prefix);
+        } else {
+            new_denom.trace_path.add_prefix(TracePrefix::new(
+                this_chain_port.clone(),
+                this_chain_chan.clone(),
+            ));
+        }
+
+        Ok(new_denom)
+    }
 }
 
 /// [Packet forward middleware](https://github.com/cosmos/ibc-apps/blob/26f3ad8/middleware/packet-forward-middleware/README.md)

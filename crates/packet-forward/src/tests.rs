@@ -875,6 +875,165 @@ fn max_retries_exceeded_timeout_retry_from_a_to_c() -> Result<(), crate::Middlew
     timeout_packet_flow_inner(false)
 }
 
+#[test]
+fn get_denom_for_this_chain_works_as_expected() {
+    let pfm = get_dummy_pfm();
+
+    let transfer_port = PortId::transfer();
+
+    // A => B
+    let source_denom = PrefixedDenom {
+        base_denom: base_denoms::A.parse().unwrap(),
+        trace_path: TracePath::empty(),
+    };
+    let expected_denom = PrefixedDenom {
+        base_denom: base_denoms::A.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on B
+                ChannelId::new(channels::BA),
+            ));
+            trace
+        },
+    };
+    let got_denom = pfm
+        .next
+        .get_denom_for_this_chain(
+            &transfer_port,
+            &ChannelId::new(channels::BA),
+            &transfer_port,
+            &ChannelId::new(channels::AB),
+            &source_denom,
+        )
+        .unwrap();
+    assert_eq!(expected_denom, got_denom);
+
+    // C => B => A => B
+    let source_denom = PrefixedDenom {
+        base_denom: base_denoms::C.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on B
+                ChannelId::new(channels::BC),
+            ));
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on A
+                ChannelId::new(channels::AB),
+            ));
+            trace
+        },
+    };
+    let expected_denom = PrefixedDenom {
+        base_denom: base_denoms::C.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on B
+                ChannelId::new(channels::BC),
+            ));
+            trace
+        },
+    };
+    let got_denom = pfm
+        .next
+        .get_denom_for_this_chain(
+            &transfer_port,
+            &ChannelId::new(channels::BA),
+            &transfer_port,
+            &ChannelId::new(channels::AB),
+            &source_denom,
+        )
+        .unwrap();
+    assert_eq!(expected_denom, got_denom);
+
+    // B => A => B
+    let source_denom = PrefixedDenom {
+        base_denom: base_denoms::B.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on A
+                ChannelId::new(channels::AB),
+            ));
+            trace
+        },
+    };
+    let expected_denom = PrefixedDenom {
+        base_denom: base_denoms::B.parse().unwrap(),
+        trace_path: TracePath::empty(),
+    };
+    let got_denom = pfm
+        .next
+        .get_denom_for_this_chain(
+            &transfer_port,
+            &ChannelId::new(channels::BA),
+            &transfer_port,
+            &ChannelId::new(channels::AB),
+            &source_denom,
+        )
+        .unwrap();
+    assert_eq!(expected_denom, got_denom);
+
+    // D => C => B => A => B
+    let source_denom = PrefixedDenom {
+        base_denom: base_denoms::D.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on C
+                ChannelId::new(channels::CD),
+            ));
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on B
+                ChannelId::new(channels::BC),
+            ));
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on A
+                ChannelId::new(channels::AB),
+            ));
+            trace
+        },
+    };
+    let expected_denom = PrefixedDenom {
+        base_denom: base_denoms::D.parse().unwrap(),
+        trace_path: {
+            let mut trace = TracePath::empty();
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on C
+                ChannelId::new(channels::CD),
+            ));
+            trace.add_prefix(TracePrefix::new(
+                transfer_port.clone(),
+                // landed on B
+                ChannelId::new(channels::BC),
+            ));
+            trace
+        },
+    };
+    let got_denom = pfm
+        .next
+        .get_denom_for_this_chain(
+            &transfer_port,
+            &ChannelId::new(channels::BA),
+            &transfer_port,
+            &ChannelId::new(channels::AB),
+            &source_denom,
+        )
+        .unwrap();
+    assert_eq!(expected_denom, got_denom);
+}
+
 // TODO: retry fwd on timeout until we succeed,
 // and check that inflight packet store is empty
 // at the end
