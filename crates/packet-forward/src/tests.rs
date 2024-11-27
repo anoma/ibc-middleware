@@ -1155,6 +1155,86 @@ fn transfer_ad_includes_next_memo_cd_in_b() {
     );
 }
 
-// TODO: retry fwd on timeout until we succeed,
-// and check that inflight packet store is empty
-// at the end
+#[test]
+fn retry_timeout_until_success() {
+    let mut pfm = get_dummy_pfm();
+
+    // NB: this should be at least 2,
+    // since we want to check multiple retries
+    const RETRIES: u8 = 5;
+
+    // simulate sending a transfer
+    let packet_data = get_dummy_packet_data_with_fwd_meta(
+        get_dummy_coin(100),
+        msg::PacketMetadata {
+            forward: get_dummy_fwd_metadata(),
+        },
+    );
+    pfm.next.inflight_packet_store.insert(
+        InFlightPacketKey {
+            port: PortId::transfer(),
+            channel: ChannelId::new(channels::BC),
+            sequence: 0u64.into(),
+        },
+        InFlightPacket {
+            original_sender_address: addresses::A.signer(),
+            refund_port_id: PortId::transfer(),
+            refund_channel_id: ChannelId::new(channels::BA),
+            packet_src_port_id: PortId::transfer(),
+            packet_src_channel_id: ChannelId::new(channels::AB),
+            packet_timeout_timestamp: TimeoutTimestamp::Never,
+            packet_timeout_height: TimeoutHeight::Never,
+            refund_sequence: 0u64.into(),
+            retries_remaining: NonZeroU8::new(RETRIES),
+            timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
+            packet_data: serde_json::to_vec(&packet_data).unwrap(),
+        },
+    );
+    pfm.next.sent_transfers.push(MsgTransfer {
+        port_id_on_a: PortId::transfer(),
+        chan_id_on_a: ChannelId::new(channels::BC),
+        timeout_height_on_b: TimeoutHeight::Never,
+        timeout_timestamp_on_b: pfm.next.timeout_timestamp(DEFAULT_FORWARD_TIMEOUT).unwrap(),
+        packet_data: PacketData {
+            sender: addresses::ESCROW_ACCOUNT.signer(),
+            receiver: addresses::C.signer(),
+            token: Coin {
+                denom: base_denoms::B.parse().unwrap(),
+                amount: 100u64.into(),
+            },
+            memo: String::new().into(),
+        },
+    });
+
+    let relayer = addresses::RELAYER.signer();
+
+    for _ in 0..RETRIES - 1 {
+        let packet_b_c = reconstruct_forwarded_packet(&pfm);
+
+        pfm.on_timeout_packet_execute_inner(&mut ModuleExtras::empty(), &packet_b_c, &relayer)
+            .unwrap();
+    }
+
+    let mut extras = ModuleExtras::empty();
+    let packet_b_c = reconstruct_forwarded_packet(&pfm);
+
+    pfm.on_timeout_packet_execute_inner(&mut extras, &packet_b_c, &relayer)
+        .unwrap();
+
+    let ack_from_c =
+        AcknowledgementStatus::success(AckStatusValue::new("Ack from chain C").unwrap()).into();
+
+    on_acknowledgement_packet_execute_inner(
+        &mut pfm,
+        get_dummy_coin(100),
+        &ack_from_c,
+        |_, pfm| {
+            assert!(pfm.next.refunds_received.is_empty());
+            assert!(pfm.next.refunds_sent.is_empty());
+        },
+    )
+    .unwrap();
+
+    assert!(pfm.next.inflight_packet_store.is_empty());
+    assert_eq!(pfm.next.sent_transfers.len(), RETRIES as usize + 1);
+}
