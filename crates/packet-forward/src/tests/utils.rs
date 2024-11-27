@@ -558,6 +558,14 @@ pub fn get_dummy_packet_data_with_memo(
     }
 }
 
+pub fn get_encoded_dummy_packet_data(transfer_coin: Coin<PrefixedDenom>) -> Vec<u8> {
+    serde_json::to_vec(&get_dummy_packet_data_with_memo(
+        transfer_coin,
+        String::new(),
+    ))
+    .unwrap()
+}
+
 pub fn get_dummy_packet_data(transfer_coin: Coin<PrefixedDenom>) -> PacketData {
     get_dummy_packet_data_with_memo(transfer_coin, String::new())
 }

@@ -94,7 +94,7 @@ fn next_inflight_packet_decreases_retries() {
         packet_src_channel_id: ChannelId::new(channels::AB),
         packet_timeout_timestamp: TimeoutTimestamp::Never,
         packet_timeout_height: TimeoutHeight::Never,
-        packet_data: get_dummy_packet_data(get_dummy_coin(100)),
+        packet_data: get_encoded_dummy_packet_data(get_dummy_coin(100)),
         refund_sequence: 0u64.into(),
         retries_remaining: Some(retries),
         timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
@@ -127,7 +127,6 @@ fn next_inflight_packet_from_packet() {
 
     let got_inflight_packet = next_inflight_packet(Left(NewInFlightPacket {
         src_packet: &packet,
-        transfer_pkt: packet_data,
         original_sender: String::new().into(),
         retries: DEFAULT_FORWARD_RETRIES,
         timeout: DEFAULT_FORWARD_TIMEOUT,
@@ -141,7 +140,7 @@ fn next_inflight_packet_from_packet() {
         packet_src_channel_id: ChannelId::new(channels::AB),
         packet_timeout_timestamp: TimeoutTimestamp::Never,
         packet_timeout_height: TimeoutHeight::Never,
-        packet_data: get_dummy_packet_data(get_dummy_coin(100)),
+        packet_data: get_encoded_dummy_packet_data(get_dummy_coin(100)),
         refund_sequence: 0u64.into(),
         retries_remaining: Some(DEFAULT_FORWARD_RETRIES),
         timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
@@ -247,7 +246,7 @@ fn events_kept_on_errors() {
         FailurePoint::BeforeSendTransfer,
         pfm.forward_transfer_packet(
             &mut extras,
-            Left((&packet, packet_data)),
+            Left(&packet),
             fwd_metadata,
             addresses::A.signer(),
             addresses::ESCROW_ACCOUNT.signer(),
@@ -334,7 +333,7 @@ fn on_recv_packet_execute_inner(
                 refund_sequence: 0u64.into(),
                 retries_remaining: Some(DEFAULT_FORWARD_RETRIES),
                 timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
-                packet_data,
+                packet_data: serde_json::to_vec(&packet_data).unwrap(),
             },
         )])
     );
@@ -683,7 +682,7 @@ fn retry_until_exhausted() {
         refund_sequence: packet.seq_on_a,
         retries_remaining: NonZeroU8::new(1),
         timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
-        packet_data,
+        packet_data: serde_json::to_vec(&packet_data).unwrap(),
     };
 
     pfm.next
@@ -824,7 +823,7 @@ fn on_timeout_packet_execute_inner(
                 refund_sequence: 0u64.into(),
                 retries_remaining: None,
                 timeout: msg::Duration::from_dur(DEFAULT_FORWARD_TIMEOUT),
-                packet_data,
+                packet_data: serde_json::to_vec(&packet_data).unwrap(),
             },
         )])
     );

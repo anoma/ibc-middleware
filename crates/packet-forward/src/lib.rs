@@ -43,7 +43,6 @@ pub type RetryInFlightPacket = InFlightPacket;
 
 struct NewInFlightPacket<'pkt> {
     src_packet: &'pkt Packet,
-    transfer_pkt: PacketData,
     original_sender: Signer,
     retries: NonZeroU8,
     timeout: dur::Duration,
@@ -176,7 +175,7 @@ where
     fn forward_transfer_packet(
         &mut self,
         extras: &mut ModuleExtras,
-        packet: Either<(&Packet, PacketData), RetryInFlightPacket>,
+        packet: Either<&Packet, RetryInFlightPacket>,
         fwd_metadata: msg::ForwardMetadata,
         original_sender: Signer,
         override_receiver: Signer,
@@ -267,14 +266,11 @@ where
                     channel: fwd_metadata.channel,
                     sequence,
                 },
-                next_inflight_packet(packet.map_left(|(src_packet, transfer_pkt)| {
-                    NewInFlightPacket {
-                        src_packet,
-                        transfer_pkt,
-                        original_sender,
-                        retries,
-                        timeout,
-                    }
+                next_inflight_packet(packet.map_left(|src_packet| NewInFlightPacket {
+                    src_packet,
+                    original_sender,
+                    retries,
+                    timeout,
                 })),
             )
             .map_err(|err| {
@@ -487,13 +483,13 @@ where
         self.receive_funds(
             extras,
             packet,
-            transfer_pkt.clone(),
+            transfer_pkt,
             override_receiver.clone(),
             relayer,
         )?;
         self.forward_transfer_packet(
             extras,
-            Left((packet, transfer_pkt)),
+            Left(packet),
             fwd_metadata,
             original_sender,
             override_receiver,
@@ -913,7 +909,6 @@ fn next_inflight_packet(
     packet.either(
         |NewInFlightPacket {
              src_packet,
-             transfer_pkt,
              original_sender,
              retries,
              timeout,
@@ -925,7 +920,7 @@ fn next_inflight_packet(
             packet_src_channel_id: src_packet.chan_id_on_a.clone(),
             packet_timeout_timestamp: src_packet.timeout_timestamp_on_b,
             packet_timeout_height: src_packet.timeout_height_on_b,
-            packet_data: transfer_pkt,
+            packet_data: src_packet.data.clone(),
             refund_sequence: src_packet.seq_on_a,
             retries_remaining: Some(retries),
             timeout: msg::Duration::from_dur(timeout),

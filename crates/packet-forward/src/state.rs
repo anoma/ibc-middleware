@@ -1,8 +1,8 @@
+use alloc::vec::Vec;
 use core::num::NonZeroU8;
 
 #[cfg(feature = "borsh")]
 use borsh::{BorshDeserialize, BorshSerialize};
-use ibc_app_transfer_types::packet::PacketData;
 use ibc_core_channel_types::packet::Packet;
 use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
 use ibc_core_host_types::identifiers::{ChannelId, PortId, Sequence};
@@ -46,7 +46,7 @@ pub struct InFlightPacket {
     /// Timeout height of the original packet.
     pub packet_timeout_height: TimeoutHeight,
     /// Data of the source packet.
-    pub packet_data: PacketData,
+    pub packet_data: Vec<u8>,
     /// Sequence number of the source packet.
     pub refund_sequence: Sequence,
     /// Number of retries remaining before the
@@ -65,7 +65,7 @@ impl From<InFlightPacket> for Packet {
             chan_id_on_a: inflight_packet.packet_src_channel_id,
             port_id_on_b: inflight_packet.refund_port_id,
             chan_id_on_b: inflight_packet.refund_channel_id,
-            data: serde_json::to_vec(&inflight_packet.packet_data).unwrap(),
+            data: inflight_packet.packet_data,
             timeout_height_on_b: inflight_packet.packet_timeout_height,
             timeout_timestamp_on_b: inflight_packet.packet_timeout_timestamp,
         }
@@ -76,7 +76,7 @@ impl From<InFlightPacket> for Packet {
 mod tests {
     use super::*;
     use crate::msg;
-    use crate::tests::utils::{channels, get_dummy_coin, get_dummy_packet_data};
+    use crate::tests::utils::{channels, get_dummy_coin, get_encoded_dummy_packet_data};
 
     #[test]
     fn conversion_from_inflight_packet_to_ibc_packet() {
@@ -88,7 +88,7 @@ mod tests {
             packet_src_channel_id: ChannelId::new(channels::AB),
             packet_timeout_timestamp: TimeoutTimestamp::Never,
             packet_timeout_height: TimeoutHeight::Never,
-            packet_data: get_dummy_packet_data(get_dummy_coin(100)),
+            packet_data: get_encoded_dummy_packet_data(get_dummy_coin(100)),
             refund_sequence: 0u64.into(),
             retries_remaining: NonZeroU8::new(1),
             timeout: msg::Duration::from_dur(dur::Duration::from_secs(600)),
@@ -103,10 +103,7 @@ mod tests {
         assert_eq!(inflight_packet.refund_port_id, packet.port_id_on_b);
         assert_eq!(inflight_packet.refund_channel_id, packet.chan_id_on_b);
 
-        assert_eq!(
-            serde_json::to_vec(&inflight_packet.packet_data).unwrap(),
-            packet.data
-        );
+        assert_eq!(inflight_packet.packet_data, packet.data);
 
         assert_eq!(
             inflight_packet.packet_timeout_height,
