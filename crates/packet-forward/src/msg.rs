@@ -1,6 +1,5 @@
 use alloc::string::{String, ToString};
 use core::fmt;
-use core::num::NonZeroU8;
 use core::str::FromStr;
 
 use ibc_core_host_types::identifiers::{ChannelId, PortId};
@@ -35,7 +34,7 @@ pub struct ForwardMetadata {
     pub timeout: Option<Duration>,
     /// The number of retries before a packet is invalidated.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub retries: Option<NonZeroU8>,
+    pub retries: Option<u8>,
     /// The memo of the next forward transfer. This might be
     /// another [`ForwardMetadata`] structure, along with
     /// any additional middleware callbacks.

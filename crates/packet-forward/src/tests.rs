@@ -128,7 +128,7 @@ fn next_inflight_packet_from_packet() {
     let got_inflight_packet = next_inflight_packet(Left(NewInFlightPacket {
         src_packet: &packet,
         original_sender: String::new().into(),
-        retries: DEFAULT_FORWARD_RETRIES,
+        retries: Some(DEFAULT_FORWARD_RETRIES),
         timeout: DEFAULT_FORWARD_TIMEOUT,
     }));
 
@@ -1237,4 +1237,16 @@ fn retry_timeout_until_success() {
 
     assert!(pfm.next.inflight_packet_store.is_empty());
     assert_eq!(pfm.next.sent_transfers.len(), RETRIES as usize + 1);
+}
+
+#[test]
+fn retries_left_for_new_pkt() {
+    assert_eq!(get_retries_left_for_new_pkt(Some(0)), None);
+    assert_eq!(get_retries_left_for_new_pkt(Some(1)), NonZeroU8::new(1));
+    assert_eq!(get_retries_left_for_new_pkt(Some(2)), NonZeroU8::new(2));
+    assert_eq!(get_retries_left_for_new_pkt(Some(3)), NonZeroU8::new(3));
+    assert_eq!(
+        get_retries_left_for_new_pkt(None),
+        Some(DEFAULT_FORWARD_RETRIES)
+    );
 }

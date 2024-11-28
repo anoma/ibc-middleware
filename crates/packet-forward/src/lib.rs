@@ -44,7 +44,7 @@ pub type RetryInFlightPacket = InFlightPacket;
 struct NewInFlightPacket<'pkt> {
     src_packet: &'pkt Packet,
     original_sender: Signer,
-    retries: NonZeroU8,
+    retries: Option<NonZeroU8>,
     timeout: dur::Duration,
 }
 
@@ -199,7 +199,7 @@ where
         let timeout = fwd_metadata
             .timeout
             .map_or(DEFAULT_FORWARD_TIMEOUT, |msg::Duration(d)| d);
-        let retries = fwd_metadata.retries.unwrap_or(DEFAULT_FORWARD_RETRIES);
+        let retries = get_retries_left_for_new_pkt(fwd_metadata.retries);
 
         emit_event_with_attrs(extras, {
             let mut attributes = Vec::with_capacity(8);
@@ -448,7 +448,7 @@ where
                     inflight_packet.retries_remaining.is_some(),
                     "We should only hit this branch with at least one retry remaining"
                 );
-                inflight_packet.retries_remaining
+                inflight_packet.retries_remaining.map(NonZeroU8::get)
             },
             next,
         };
@@ -937,7 +937,7 @@ fn next_inflight_packet(
             packet_timeout_height: src_packet.timeout_height_on_b,
             packet_data: src_packet.data.clone(),
             refund_sequence: src_packet.seq_on_a,
-            retries_remaining: Some(retries),
+            retries_remaining: retries,
             timeout: msg::Duration::from_dur(timeout),
         },
         |inflight_packet| {
@@ -986,4 +986,9 @@ fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventA
         kind: MODULE.to_owned(),
         attributes,
     });
+}
+
+#[inline]
+fn get_retries_left_for_new_pkt(input_retries: Option<u8>) -> Option<NonZeroU8> {
+    input_retries.map_or(Some(DEFAULT_FORWARD_RETRIES), NonZeroU8::new)
 }
