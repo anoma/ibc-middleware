@@ -920,6 +920,7 @@ name = "ibc-client-tendermint-types"
 version = "0.54.0"
 source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38489943c4e75206eaffeeeec6153c039c2499d1#38489943c4e75206eaffeeeec6153c039c2499d1"
 dependencies = [
+ "borsh",
  "displaydoc",
  "ibc-core-client-types",
  "ibc-core-commitment-types",
@@ -1174,6 +1175,7 @@ name = "ibc-core-host-cosmos"
 version = "0.54.0"
 source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38489943c4e75206eaffeeeec6153c039c2499d1#38489943c4e75206eaffeeeec6153c039c2499d1"
 dependencies = [
+ "borsh",
  "derive_more 0.99.18",
  "displaydoc",
  "ibc-app-transfer-types",
@@ -1326,6 +1328,7 @@ version = "0.54.0"
 source = "git+https://github.com/heliaxdev/cosmos-ibc-rs?rev=38489943c4e75206eaffeeeec6153c039c2499d1#38489943c4e75206eaffeeeec6153c039c2499d1"
 dependencies = [
  "basecoin-store",
+ "borsh",
  "derive_more 0.99.18",
  "displaydoc",
  "ibc",
