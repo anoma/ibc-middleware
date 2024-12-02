@@ -123,7 +123,7 @@ mod duration {
         }
     }
 
-    /// Duration type whose serialization routines are compatible with Strange Love's
+    /// Duration type whose serialization routines are compatible with Strangelove's
     /// PFM JSON forward messages.
     #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
     #[serde(from = "AllDuration")]
