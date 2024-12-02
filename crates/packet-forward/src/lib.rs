@@ -177,8 +177,18 @@ pub struct PacketForwardMiddleware<M> {
 }
 
 impl<M> PacketForwardMiddleware<M> {
+    /// Return an immutable ref to the next middleware.
+    pub fn next(&self) -> &M {
+        &self.next
+    }
+
+    /// Return a mutable ref to the next middleware.
+    pub fn next_mut(&mut self) -> &mut M {
+        &mut self.next
+    }
+
     /// Wrap an existing middleware in the PFM.
-    pub const fn next(next: M) -> Self {
+    pub const fn wrap(next: M) -> Self {
         Self { next }
     }
 }

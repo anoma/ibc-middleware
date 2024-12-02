@@ -456,7 +456,7 @@ fn failure_injection_err_msg(point: FailurePoint) -> String {
 pub type DummyPfm = PacketForwardMiddleware<Store<DummyTransferModule>>;
 
 pub fn get_dummy_pfm() -> DummyPfm {
-    PacketForwardMiddleware::next(Store::new(DummyTransferModule::new()))
+    PacketForwardMiddleware::wrap(Store::new(DummyTransferModule::new()))
 }
 
 pub fn get_dummy_coin(amount: u64) -> Coin<PrefixedDenom> {
