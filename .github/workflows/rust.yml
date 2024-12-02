@@ -10,17 +10,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  fmt-check:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-    - name: Format check
+    - name: Check code formatting
       run: cargo fmt --check
+
+  clippy-no-std:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
     - name: Clippy (no_std)
       run: cargo clippy --verbose
+    - name: Clippy (no_std + borsh)
+      run: cargo clippy --verbose --features borsh
+
+  clippy-with-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
     - name: Clippy (with tests)
       run: cargo clippy --verbose --tests
-    - name: Tests
+    - name: Clippy (with tests + borsh)
+      run: cargo clippy --verbose --tests --features borsh
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run tests
       run: cargo test --verbose
