@@ -1,5 +1,6 @@
 [package]
 name = "ibc-middleware-packet-forward"
+version = "0.8.0"
 description = "IBC packet forward middleware implementation targeting ibc-rs"
 authors.workspace = true
 edition.workspace = true
@@ -8,7 +9,6 @@ keywords.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
-version = "0.8.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
