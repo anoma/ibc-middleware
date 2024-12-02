@@ -90,28 +90,28 @@ mod duration {
         dur::Duration,
     );
 
-    impl From<f64> for F64Dur {
-        fn from(dur: f64) -> Self {
-            Self(DurrDerp(dur::Duration::from_nanos(dur as u128)))
+    impl From<u64> for U64Dur {
+        fn from(dur: u64) -> Self {
+            Self(DurrDerp(dur::Duration::from_nanos(dur.into())))
         }
     }
 
     #[derive(Debug, Serialize, Deserialize)]
-    #[serde(from = "f64")]
-    struct F64Dur(DurrDerp);
+    #[serde(from = "u64")]
+    struct U64Dur(DurrDerp);
 
     #[derive(Debug, Serialize, Deserialize)]
     #[serde(untagged)]
     enum AllDuration {
         Dur(DurrDerp),
-        F64(F64Dur),
+        U64(U64Dur),
     }
 
     impl From<AllDuration> for Duration {
         fn from(dur: AllDuration) -> Self {
             match dur {
                 AllDuration::Dur(DurrDerp(dur)) => Self(dur),
-                AllDuration::F64(F64Dur(DurrDerp(dur))) => Self(dur),
+                AllDuration::U64(U64Dur(DurrDerp(dur))) => Self(dur),
             }
         }
     }
@@ -157,16 +157,16 @@ mod tests {
     #[test]
     fn duration_serde_roundtrip_parsing() {
         const DUR_STR: &str = "\"1m5s\"";
-        const DUR_F64: &str = "1.2345";
+        const DUR_U64: &str = "1";
 
         let expected_from_str = Duration(dur::Duration::from_secs(65));
-        let expected_from_f64 = Duration(dur::Duration::from_nanos(1));
+        let expected_from_u64 = Duration(dur::Duration::from_nanos(1));
 
         let parsed: Duration = serde_json::from_str(DUR_STR).unwrap();
         assert_eq!(parsed, expected_from_str);
 
-        let parsed: Duration = serde_json::from_str(DUR_F64).unwrap();
-        assert_eq!(parsed, expected_from_f64);
+        let parsed: Duration = serde_json::from_str(DUR_U64).unwrap();
+        assert_eq!(parsed, expected_from_u64);
     }
 
     #[test]
