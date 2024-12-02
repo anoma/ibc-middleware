@@ -1034,9 +1034,6 @@ fn get_denom_for_this_chain_works_as_expected() {
     assert_eq!(expected_denom, got_denom);
 }
 
-// TODO: test forwarding from chain A to D. the next memo
-// should be filled in with PFM instructions for chain C
-// to forward to D
 #[test]
 fn transfer_ad_includes_next_memo_cd_in_b() {
     let mut pfm = get_dummy_pfm();
