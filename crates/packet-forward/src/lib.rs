@@ -2,6 +2,21 @@
 
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+#![cfg_attr(
+    not(test),
+    deny(
+        missing_docs,
+        rust_2018_idioms,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
+        clippy::cast_lossless,
+        clippy::arithmetic_side_effects,
+        clippy::dbg_macro,
+        clippy::print_stdout,
+        clippy::print_stderr
+    )
+)]
 
 extern crate alloc;
 
@@ -39,6 +54,7 @@ pub use self::msg::{Duration, ForwardMetadata, PacketMetadata};
 #[doc(inline)]
 pub use self::state::{InFlightPacket, InFlightPacketKey};
 
+/// Type alias for an [`InFlightPacket`], to enhance code readability.
 pub type RetryInFlightPacket = InFlightPacket;
 
 struct NewInFlightPacket<'pkt> {
