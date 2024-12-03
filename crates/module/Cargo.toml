@@ -1,0 +1,23 @@
+[package]
+name = "ibc-middleware-module"
+version = "0.1.0"
+description = "IBC module to facilitate middleware implementations"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+
+[dependencies]
+ibc-core-channel-types.workspace = true
+ibc-core-host-types.workspace = true
+ibc-core-router-types.workspace = true
+ibc-core-router.workspace = true
+ibc-primitives.workspace = true
+
+[dev-dependencies]
+ibc-middleware-module-macros = { path = "../module-macros" }
+
+ibc-testkit.workspace = true
