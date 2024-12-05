@@ -97,11 +97,27 @@ impl<M> Store<M> {
     }
 }
 
-impl<M> IbcCoreModule for Store<M>
+from_middleware! {
+    impl<M> IbcCoreModule for Store<M>
+    where
+        M: IbcCoreModule,
+}
+
+impl<M> MiddlewareModule for Store<M>
 where
     M: IbcCoreModule,
 {
-    fn on_recv_packet_execute(
+    type NextMiddleware = M;
+
+    fn next_middleware(&self) -> &M {
+        &self.middleware
+    }
+
+    fn next_middleware_mut(&mut self) -> &mut M {
+        &mut self.middleware
+    }
+
+    fn middleware_on_recv_packet_execute(
         &mut self,
         packet: &Packet,
         relayer: &Signer,
@@ -136,192 +152,6 @@ where
                 }
             }),
         )
-    }
-
-    fn on_acknowledgement_packet_validate(
-        &self,
-        packet: &Packet,
-        acknowledgement: &Acknowledgement,
-        relayer: &Signer,
-    ) -> Result<(), PacketError> {
-        self.middleware
-            .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
-    }
-
-    fn on_acknowledgement_packet_execute(
-        &mut self,
-        packet: &Packet,
-        acknowledgement: &Acknowledgement,
-        relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
-        self.middleware
-            .on_acknowledgement_packet_execute(packet, acknowledgement, relayer)
-    }
-
-    fn on_timeout_packet_validate(
-        &self,
-        packet: &Packet,
-        relayer: &Signer,
-    ) -> Result<(), PacketError> {
-        self.middleware.on_timeout_packet_validate(packet, relayer)
-    }
-
-    fn on_timeout_packet_execute(
-        &mut self,
-        packet: &Packet,
-        relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
-        self.middleware.on_timeout_packet_execute(packet, relayer)
-    }
-
-    fn on_chan_open_init_validate(
-        &self,
-        order: Order,
-        connection_hops: &[ConnectionId],
-        port_id: &PortId,
-        channel_id: &ChannelId,
-        counterparty: &Counterparty,
-        version: &Version,
-    ) -> Result<Version, ChannelError> {
-        self.middleware.on_chan_open_init_validate(
-            order,
-            connection_hops,
-            port_id,
-            channel_id,
-            counterparty,
-            version,
-        )
-    }
-
-    fn on_chan_open_init_execute(
-        &mut self,
-        order: Order,
-        connection_hops: &[ConnectionId],
-        port_id: &PortId,
-        channel_id: &ChannelId,
-        counterparty: &Counterparty,
-        version: &Version,
-    ) -> Result<(ModuleExtras, Version), ChannelError> {
-        self.middleware.on_chan_open_init_execute(
-            order,
-            connection_hops,
-            port_id,
-            channel_id,
-            counterparty,
-            version,
-        )
-    }
-
-    fn on_chan_open_try_validate(
-        &self,
-        order: Order,
-        connection_hops: &[ConnectionId],
-        port_id: &PortId,
-        channel_id: &ChannelId,
-        counterparty: &Counterparty,
-        counterparty_version: &Version,
-    ) -> Result<Version, ChannelError> {
-        self.middleware.on_chan_open_try_validate(
-            order,
-            connection_hops,
-            port_id,
-            channel_id,
-            counterparty,
-            counterparty_version,
-        )
-    }
-
-    fn on_chan_open_try_execute(
-        &mut self,
-        order: Order,
-        connection_hops: &[ConnectionId],
-        port_id: &PortId,
-        channel_id: &ChannelId,
-        counterparty: &Counterparty,
-        counterparty_version: &Version,
-    ) -> Result<(ModuleExtras, Version), ChannelError> {
-        self.middleware.on_chan_open_try_execute(
-            order,
-            connection_hops,
-            port_id,
-            channel_id,
-            counterparty,
-            counterparty_version,
-        )
-    }
-
-    fn on_chan_open_ack_validate(
-        &self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-        counterparty_version: &Version,
-    ) -> Result<(), ChannelError> {
-        self.middleware
-            .on_chan_open_ack_validate(port_id, channel_id, counterparty_version)
-    }
-
-    fn on_chan_open_ack_execute(
-        &mut self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-        counterparty_version: &Version,
-    ) -> Result<ModuleExtras, ChannelError> {
-        self.middleware
-            .on_chan_open_ack_execute(port_id, channel_id, counterparty_version)
-    }
-
-    fn on_chan_open_confirm_validate(
-        &self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-    ) -> Result<(), ChannelError> {
-        self.middleware
-            .on_chan_open_confirm_validate(port_id, channel_id)
-    }
-
-    fn on_chan_open_confirm_execute(
-        &mut self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-    ) -> Result<ModuleExtras, ChannelError> {
-        self.middleware
-            .on_chan_open_confirm_execute(port_id, channel_id)
-    }
-
-    fn on_chan_close_init_validate(
-        &self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-    ) -> Result<(), ChannelError> {
-        self.middleware
-            .on_chan_close_init_validate(port_id, channel_id)
-    }
-
-    fn on_chan_close_init_execute(
-        &mut self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-    ) -> Result<ModuleExtras, ChannelError> {
-        self.middleware
-            .on_chan_close_init_execute(port_id, channel_id)
-    }
-
-    fn on_chan_close_confirm_validate(
-        &self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-    ) -> Result<(), ChannelError> {
-        self.middleware
-            .on_chan_close_confirm_validate(port_id, channel_id)
-    }
-
-    fn on_chan_close_confirm_execute(
-        &mut self,
-        port_id: &PortId,
-        channel_id: &ChannelId,
-    ) -> Result<ModuleExtras, ChannelError> {
-        self.middleware
-            .on_chan_close_confirm_execute(port_id, channel_id)
     }
 }
 
