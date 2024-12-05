@@ -17,6 +17,9 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage_nightly)"] }
 borsh = ["dep:borsh"]
 
 [dependencies]
+ibc-middleware-module = { path = "../module" }
+ibc-middleware-module-macros = { path = "../module-macros" }
+
 borsh = { workspace = true, optional = true }
 dur.workspace = true
 either.workspace = true
