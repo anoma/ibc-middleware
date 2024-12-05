@@ -245,10 +245,13 @@ mod tests {
     use super::*;
 
     #[derive(Debug, ModuleFromMiddleware)]
-    struct DummyMiddleware(DummyTransferModule);
+    struct DummyMiddleware<M>(M);
 
-    impl MiddlewareModule for DummyMiddleware {
-        type NextMiddleware = DummyTransferModule;
+    impl<M> MiddlewareModule for DummyMiddleware<M>
+    where
+        M: Module,
+    {
+        type NextMiddleware = M;
 
         fn next_middleware(&self) -> &Self::NextMiddleware {
             &self.0
@@ -271,7 +274,7 @@ mod tests {
 
     #[test]
     fn dummy_middleware_is_module() {
-        assert_module_impl::<DummyMiddleware>();
+        assert_module_impl::<DummyMiddleware<DummyTransferModule>>();
     }
 
     #[test]

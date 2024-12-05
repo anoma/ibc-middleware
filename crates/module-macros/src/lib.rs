@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use quote::quote;
+use quote::{quote, ToTokens};
 
 #[proc_macro_derive(ModuleFromMiddleware)]
 pub fn derive_module_from_middleware(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -12,11 +12,42 @@ fn derive_module_from_middleware_inner(
 ) -> proc_macro2::TokenStream {
     let _struct = syn::parse2::<syn::ItemStruct>(input).expect("Expected struct definition");
 
-    let struct_name = &_struct.ident;
-    //let struct_generics = &_struct.generics;
+    let struct_generics = &_struct.generics;
+    let struct_generics_params = &struct_generics.params;
+
+    let (name, types) = fetch_name_with_generic_params(&_struct);
+    let where_clauses = {
+        let mut clauses =
+            struct_generics
+                .where_clause
+                .clone()
+                .unwrap_or_else(|| syn::WhereClause {
+                    where_token: Default::default(),
+                    predicates: syn::punctuated::Punctuated::new(),
+                });
+
+        for ty in types {
+            clauses
+                .predicates
+                .push(syn::WherePredicate::Type(syn::PredicateType {
+                    lifetimes: None,
+                    bounded_ty: syn::Type::Verbatim(ty),
+                    colon_token: Default::default(),
+                    bounds: {
+                        let mut b = syn::punctuated::Punctuated::new();
+                        b.push(syn::TypeParamBound::Verbatim(quote!(Module)));
+                        b
+                    },
+                }));
+        }
+
+        quote!(#clauses)
+    };
 
     quote! {
-        impl Module for #struct_name {
+        impl<#struct_generics_params> Module for #name
+        #where_clauses
+        {
             #[inline(always)]
             fn on_chan_open_init_validate(
                 &self,
@@ -219,4 +250,36 @@ fn derive_module_from_middleware_inner(
             }
         }
     }
+}
+
+fn fetch_name_with_generic_params(
+    _struct: &syn::ItemStruct,
+) -> (proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>) {
+    let mut types = vec![];
+    let mut consts = vec![];
+    let mut lifetimes = vec![];
+
+    for param in _struct.generics.params.iter() {
+        match param {
+            syn::GenericParam::Type(type_) => types.push(type_.ident.to_token_stream()),
+            syn::GenericParam::Lifetime(life_def) => {
+                lifetimes.push(life_def.lifetime.to_token_stream())
+            }
+            syn::GenericParam::Const(constant) => consts.push(constant.ident.to_token_stream()),
+        }
+    }
+
+    let ident = &_struct.ident;
+    let (all_params, types) = {
+        let (mut output, mut consts, types) = (lifetimes, consts, types);
+        output.append(&mut consts);
+        output.extend(types.iter().cloned());
+        (output, types)
+    };
+
+    let name = quote! {
+        #ident < #(#all_params),* >
+    };
+
+    (name, types)
 }
