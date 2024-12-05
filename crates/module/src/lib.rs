@@ -239,13 +239,17 @@ pub trait MiddlewareModule {
 
 #[cfg(test)]
 mod tests {
-    use ibc_middleware_module_macros::ModuleFromMiddleware;
+    use ibc_middleware_module_macros::from_middleware;
     use ibc_testkit::testapp::ibc::applications::transfer::types::DummyTransferModule;
 
     use super::*;
 
-    #[derive(Debug, ModuleFromMiddleware)]
+    #[derive(Debug)]
     struct DummyMiddleware<M>(M);
+
+    from_middleware! {
+        impl<M: Module> Module for DummyMiddleware<M>
+    }
 
     impl<M> MiddlewareModule for DummyMiddleware<M>
     where
