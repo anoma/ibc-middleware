@@ -73,6 +73,7 @@ pub struct Store<M> {
     pub refunds_received: Vec<(Packet, PacketData)>,
     pub refunds_sent: Vec<InFlightPacket>,
     pub ack_and_events_written: Vec<(Packet, Acknowledgement)>,
+    pub overriden_packets_received: Vec<Packet>,
 }
 
 impl<M> Store<M> {
@@ -85,6 +86,7 @@ impl<M> Store<M> {
             refunds_sent: Vec::new(),
             ack_and_events_written: Vec::new(),
             failure_injections: HashSet::new(),
+            overriden_packets_received: Vec::new(),
         }
     }
 
@@ -122,6 +124,8 @@ where
         packet: &Packet,
         relayer: &Signer,
     ) -> (ModuleExtras, Option<Acknowledgement>) {
+        self.overriden_packets_received.push(packet.clone());
+
         if let Err(err) =
             self.check_failure_injection(FailurePoint::BeforeNextMiddlewareOnRecvPacket)
         {

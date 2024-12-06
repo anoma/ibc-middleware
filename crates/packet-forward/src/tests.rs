@@ -1247,3 +1247,22 @@ fn retries_left_for_new_pkt() {
         Some(DEFAULT_FORWARD_RETRIES)
     );
 }
+
+#[test]
+fn next_middleware_memo_has_no_fwd_key() -> Result<(), crate::MiddlewareError> {
+    let ack_from_c =
+        AcknowledgementStatus::success(AckStatusValue::new("Ack from chain C").unwrap()).into();
+    no_timeout_packet_flow_inner(&ack_from_c, |_, pfm| {
+        assert!(pfm.next.overriden_packets_received.iter().all(|packet| {
+            let packet_data: PacketData = serde_json::from_slice(&packet.data).unwrap();
+
+            let serde_json::Value::Object(memo_obj) =
+                serde_json::from_str(packet_data.memo.as_ref()).unwrap()
+            else {
+                panic!("Expected JSON object");
+            };
+
+            !memo_obj.contains_key("forward")
+        }))
+    })
+}

@@ -39,7 +39,8 @@
         clippy::shadow_unrelated,
         clippy::useless_attribute,
         clippy::zero_repeat_side_effects,
-        clippy::builtin_type_shadow
+        clippy::builtin_type_shadow,
+        clippy::unreachable
     )
 )]
 
@@ -367,7 +368,7 @@ where
         let override_packet = {
             let ics20_packet_data = PacketData {
                 receiver: override_receiver,
-                memo: String::new().into(),
+                memo: extract_next_memo_from_pfm_packet(&source_transfer_pkt).into(),
                 ..source_transfer_pkt
             };
 
@@ -901,4 +902,18 @@ fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventA
 #[inline]
 fn get_retries_left_for_new_pkt(input_retries: Option<u8>) -> Option<NonZeroU8> {
     input_retries.map_or(Some(DEFAULT_FORWARD_RETRIES), NonZeroU8::new)
+}
+
+// NB: Assume that `src_packet_data` has been validated as a PFM packet
+#[inline]
+fn extract_next_memo_from_pfm_packet(src_packet_data: &PacketData) -> String {
+    #[allow(clippy::unwrap_used, clippy::unreachable)]
+    let serde_json::Value::Object(mut memo_obj) =
+        serde_json::from_str(src_packet_data.memo.as_ref()).unwrap()
+    else {
+        unreachable!()
+    };
+    memo_obj.remove("forward");
+    #[allow(clippy::unwrap_used)]
+    serde_json::to_string(&memo_obj).unwrap()
 }
