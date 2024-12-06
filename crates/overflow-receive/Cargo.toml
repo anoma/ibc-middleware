@@ -1,0 +1,18 @@
+[package]
+name = "ibc-middleware-overflow-receive"
+description = "IBC middleware that sends amounts overflowing some target to another address"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+
+[dependencies]
+ibc-middleware-module = { path = "../module" }
+ibc-middleware-module-macros = { path = "../module-macros" }
+
+serde.workspace = true
+serde_json.workspace = true

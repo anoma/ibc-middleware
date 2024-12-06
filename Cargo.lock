@@ -1274,6 +1274,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibc-middleware-overflow-receive"
+version = "0.1.0"
+dependencies = [
+ "ibc-middleware-module",
+ "ibc-middleware-module-macros",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ibc-middleware-packet-forward"
 version = "0.9.0"
 dependencies = [
