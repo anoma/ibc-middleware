@@ -1277,8 +1277,14 @@ dependencies = [
 name = "ibc-middleware-overflow-receive"
 version = "0.1.0"
 dependencies = [
+ "ibc-app-transfer-types",
+ "ibc-core-channel-types",
+ "ibc-core-host-types",
+ "ibc-core-router",
+ "ibc-core-router-types",
  "ibc-middleware-module",
  "ibc-middleware-module-macros",
+ "ibc-primitives",
  "serde",
  "serde_json",
 ]
