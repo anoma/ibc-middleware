@@ -1,22 +1,24 @@
+use alloc::string::String;
+
 use ibc_app_transfer_types::Amount;
 use ibc_primitives::Signer;
-use serde::{Deserialize, Serialize};
-
-/// Metadata included in ICS-20 packet memos.
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
-pub struct PacketMetadata {
-    /// Overflow receive middleware metadata.
-    pub overflow_receive: OverflowReceiveMetadata,
-}
 
 /// Metadata included in ICS-20 packet memos,
 /// related with the overflow receive middleware.
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
-pub struct OverflowReceiveMetadata {
+pub trait PacketMetadata {
+    /// Determine if the value `msg` is a valid `PacketMetadata`.
+    fn is_overflow_receive_msg(msg: &serde_json::Map<String, serde_json::Value>) -> bool;
+
+    /// Remove this middleware's entry from the JSON object memo.
+    fn strip_middleware_msg(
+        json_obj_memo: serde_json::Map<String, serde_json::Value>,
+    ) -> serde_json::Map<String, serde_json::Value>;
+
     /// Account that shall receive the funds in case of an
     /// overflow.
-    pub overflow_receiver: Signer,
+    fn overflow_receiver(&self) -> &Signer;
+
     /// The target amount that the original receiver will
     /// receive.
-    pub target_amount: Amount,
+    fn target_amount(&self) -> &Amount;
 }
