@@ -46,6 +46,8 @@
 extern crate alloc;
 
 mod msg;
+#[cfg(test)]
+pub(crate) mod tests;
 
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -89,7 +91,7 @@ enum MiddlewareError {
 pub trait OverflowRecvContext {
     /// Metadata included in ICS-20 packet memos,
     /// related with the overflow receive middleware.
-    type PacketMetadata: msg::PacketMetadata + Serialize + for<'de> Deserialize<'de>;
+    type PacketMetadata: msg::PacketMetadata + Serialize + for<'de> Deserialize<'de> + Sized;
 
     /// Error returned by fallible operations.
     type Error: fmt::Display;

@@ -15,10 +15,13 @@ ibc-middleware-module = { path = "../module" }
 ibc-middleware-module-macros = { path = "../module-macros" }
 
 ibc-app-transfer-types.workspace = true
-ibc-primitives.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-ibc-core-router.workspace = true
 ibc-core-channel-types.workspace = true
 ibc-core-host-types.workspace = true
 ibc-core-router-types.workspace = true
+ibc-core-router.workspace = true
+ibc-primitives.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+ibc-testkit.workspace = true

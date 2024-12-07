@@ -1285,6 +1285,7 @@ dependencies = [
  "ibc-middleware-module",
  "ibc-middleware-module-macros",
  "ibc-primitives",
+ "ibc-testkit",
  "serde",
  "serde_json",
 ]
