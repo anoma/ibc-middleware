@@ -152,4 +152,32 @@ fn forward_to_next_middleware_if_zero() {
 
     assert!(orm.next.overflow_minted_coins.is_empty());
     assert!(orm.next.overflow_unescrowed_coins.is_empty());
+    assert!(orm.next.overriden_packets_received.is_empty());
+}
+
+#[test]
+fn error_on_underflow() {
+    const TARGET: u64 = 150;
+    const RECEIVED: u64 = 50;
+
+    let packet = get_dummy_orm_packet(BASE_DENOM, TARGET, RECEIVED);
+
+    let mut orm = get_dummy_orm();
+
+    assert!(matches!(
+        orm.on_recv_packet_execute_inner(
+            &mut ModuleExtras::empty(),
+            &packet,
+            &addresses::RELAYER.signer()
+        ),
+        Err(crate::MiddlewareError::Message(err))
+        if err == format!(
+            "Target amount ({TARGET}) is greater than the \
+             received amount ({RECEIVED})",
+        )
+    ));
+
+    assert!(orm.next.overflow_minted_coins.is_empty());
+    assert!(orm.next.overflow_unescrowed_coins.is_empty());
+    assert!(orm.next.overriden_packets_received.is_empty());
 }
