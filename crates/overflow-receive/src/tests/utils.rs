@@ -1,21 +1,21 @@
 use std::collections::HashSet;
 
 use ibc_app_transfer_types::Amount;
+use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
 use ibc_testkit::testapp::ibc::applications::transfer::types::DummyTransferModule;
 
 use super::*;
 
 pub mod addresses {
-    pub const A: &str = "a1arndt";
-    #[allow(dead_code)]
-    pub const B: &str = "b1bertha";
-    pub const C: &str = "c1copernicus";
-    pub const D: &str = "d1dionysus";
-
-    pub const NULL: &str = "NULL";
+    pub const ALFONSO: &str = "ALFONSO";
+    pub const BERTHA: &str = "BERTHA";
+    pub const CARLOS: &str = "CARLOS";
     pub const RELAYER: &str = "RELAYER";
-    pub const ESCROW_ACCOUNT: &str = "b1escrowaccount";
 }
+
+pub const SRC_CHANNEL_ID: u64 = 0;
+pub const DST_CHANNEL_ID: u64 = !SRC_CHANNEL_ID;
+pub const BASE_DENOM: &str = "uchungus";
 
 pub trait StrExt {
     fn signer(&self) -> Signer;
@@ -27,40 +27,15 @@ impl StrExt for str {
     }
 }
 
-// NOTE: Assume we have three chains: A, B, and C. The tests will be set
-// up as if we were chain B, forwarding a packet from A to C.
-pub mod channels {
-    // Outgoing channels from A.
-    pub const AB: u64 = 0;
-
-    // Outgoing channels from B.
-    pub const BA: u64 = 1;
-    pub const BC: u64 = 2;
-
-    // Outgoing channels from C.
-    pub const CB: u64 = 3;
-    pub const CD: u64 = 4;
-
-    // Outgoing channels from D.
-    #[allow(dead_code)]
-    pub const DC: u64 = 5;
-}
-
-pub mod base_denoms {
-    pub const A: &str = "uauauiua";
-    pub const B: &str = "ubongus";
-    pub const C: &str = "uchungus";
-    pub const D: &str = "udongus";
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FailurePoint {
+    MintCoinsValidate,
     BeforeNextMiddlewareOnRecvPacket,
     AfterNextMiddlewareOnRecvPacket,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
-pub struct PacketMetadata {
+pub struct OrmPacketMetadata {
     pub overflow_receive: OverflowReceiveMetadata,
 }
 
@@ -70,7 +45,7 @@ pub struct OverflowReceiveMetadata {
     pub target_amount: Amount,
 }
 
-impl msg::PacketMetadata for PacketMetadata {
+impl msg::PacketMetadata for OrmPacketMetadata {
     fn is_overflow_receive_msg(msg: &serde_json::Map<String, serde_json::Value>) -> bool {
         msg.contains_key("overflow_receive")
     }
@@ -96,8 +71,8 @@ pub struct Store<M> {
     middleware: M,
     failure_injections: HashSet<FailurePoint>,
     pub overriden_packets_received: Vec<Packet>,
-    pub minted_coins: Vec<(Signer, Coin<PrefixedDenom>)>,
-    pub unescrowed_coins: Vec<(PortId, ChannelId, Signer, Coin<PrefixedDenom>)>,
+    pub overflow_minted_coins: Vec<(Signer, Coin<PrefixedDenom>)>,
+    pub overflow_unescrowed_coins: Vec<(PortId, ChannelId, Signer, Coin<PrefixedDenom>)>,
 }
 
 impl<M> Store<M> {
@@ -106,8 +81,8 @@ impl<M> Store<M> {
             middleware,
             failure_injections: HashSet::new(),
             overriden_packets_received: vec![],
-            minted_coins: vec![],
-            unescrowed_coins: vec![],
+            overflow_minted_coins: vec![],
+            overflow_unescrowed_coins: vec![],
         }
     }
 
@@ -181,7 +156,7 @@ where
 }
 
 impl<M> OverflowRecvContext for Store<M> {
-    type PacketMetadata = PacketMetadata;
+    type PacketMetadata = OrmPacketMetadata;
     type Error = String;
 
     fn mint_coins_validate(
@@ -189,6 +164,7 @@ impl<M> OverflowRecvContext for Store<M> {
         _receiver: &Signer,
         _coin: &Coin<PrefixedDenom>,
     ) -> Result<(), Self::Error> {
+        self.check_failure_injection(FailurePoint::MintCoinsValidate)?;
         Ok(())
     }
 
@@ -197,7 +173,8 @@ impl<M> OverflowRecvContext for Store<M> {
         receiver: &Signer,
         coin: &Coin<PrefixedDenom>,
     ) -> Result<(), Self::Error> {
-        self.minted_coins.push((receiver.clone(), coin.clone()));
+        self.overflow_minted_coins
+            .push((receiver.clone(), coin.clone()));
         Ok(())
     }
 
@@ -218,7 +195,7 @@ impl<M> OverflowRecvContext for Store<M> {
         channel: &ChannelId,
         coin: &Coin<PrefixedDenom>,
     ) -> Result<(), Self::Error> {
-        self.unescrowed_coins.push((
+        self.overflow_unescrowed_coins.push((
             port.clone(),
             channel.clone(),
             receiver.clone(),
@@ -231,6 +208,10 @@ impl<M> OverflowRecvContext for Store<M> {
 impl<M> OverflowReceiveMiddleware<Store<M>> {
     pub fn inject_failure(&mut self, point: FailurePoint) {
         self.next.failure_injections.insert(point);
+    }
+
+    pub fn eject_failure(&mut self, point: FailurePoint) {
+        self.next.failure_injections.remove(&point);
     }
 }
 
@@ -281,4 +262,37 @@ pub type DummyOrm = OverflowReceiveMiddleware<Store<DummyTransferModule>>;
 
 pub fn get_dummy_orm() -> DummyOrm {
     OverflowReceiveMiddleware::wrap(Store::new(DummyTransferModule::new()))
+}
+
+pub fn get_dummy_orm_packet(token: &str, target: u64, received: u64) -> Packet {
+    Packet {
+        data: serde_json::to_vec(&PacketData {
+            sender: addresses::ALFONSO.signer(),
+            receiver: addresses::BERTHA.signer(),
+            token: Coin {
+                denom: token.parse().unwrap(),
+                amount: received.into(),
+            },
+            memo: serde_json::to_string(&get_dummy_orm_metadata(target))
+                .unwrap()
+                .into(),
+        })
+        .unwrap(),
+        seq_on_a: 0u64.into(),
+        port_id_on_a: PortId::transfer(),
+        chan_id_on_a: ChannelId::new(SRC_CHANNEL_ID),
+        port_id_on_b: PortId::transfer(),
+        chan_id_on_b: ChannelId::new(DST_CHANNEL_ID),
+        timeout_height_on_b: TimeoutHeight::Never,
+        timeout_timestamp_on_b: TimeoutTimestamp::Never,
+    }
+}
+
+pub fn get_dummy_orm_metadata(target: u64) -> OrmPacketMetadata {
+    OrmPacketMetadata {
+        overflow_receive: OverflowReceiveMetadata {
+            overflow_receiver: addresses::CARLOS.signer(),
+            target_amount: target.into(),
+        },
+    }
 }
