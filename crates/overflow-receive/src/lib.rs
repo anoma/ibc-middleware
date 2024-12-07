@@ -1,6 +1,7 @@
 //! IBC middleware that sends amounts overflowing some target to another address.
 
 #![cfg_attr(not(test), no_std)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![cfg_attr(
     not(test),
     deny(
@@ -136,6 +137,7 @@ pub struct OverflowReceiveMiddleware<M> {
     next: M,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<M> OverflowReceiveMiddleware<M> {
     /// Return an immutable ref to the next middleware.
     pub fn next(&self) -> &M {
@@ -154,6 +156,7 @@ impl<M> OverflowReceiveMiddleware<M> {
 }
 
 from_middleware! {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl<M> IbcCoreModule for OverflowReceiveMiddleware<M>
     where
         M: IbcCoreModule + OverflowRecvContext,
@@ -300,6 +303,7 @@ where
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<M> MiddlewareModule for OverflowReceiveMiddleware<M>
 where
     M: IbcCoreModule + OverflowRecvContext,
@@ -333,6 +337,7 @@ where
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[inline]
 fn new_error_ack(message: impl fmt::Display) -> AcknowledgementStatus {
     AcknowledgementStatus::error(
