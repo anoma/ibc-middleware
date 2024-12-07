@@ -1,7 +1,6 @@
 //! IBC middleware that sends amounts overflowing some target to another address.
 
 #![cfg_attr(not(test), no_std)]
-#![cfg_attr(test, deny(clippy::assertions_on_result_states))]
 #![cfg_attr(
     not(test),
     deny(
@@ -179,7 +178,14 @@ where
             .checked_sub(*orm_metadata.target_amount())
         {
             Some(amt) if *amt != [0u64, 0, 0, 0] => (*orm_metadata.target_amount(), amt),
-            _ => return Err(MiddlewareError::ForwardToNextMiddleware),
+            Some(_ /* = 0 */) => return Err(MiddlewareError::ForwardToNextMiddleware),
+            None => {
+                return Err(MiddlewareError::Message(format!(
+                    "Target amount ({}) is greater than the received amount ({})",
+                    orm_metadata.target_amount(),
+                    transfer_pkt.token.amount
+                )))
+            }
         };
 
         let mut attributes = vec![];
@@ -191,7 +197,10 @@ where
         ) {
             let prefix = TracePrefix::new(packet.port_id_on_a.clone(), packet.chan_id_on_a.clone());
             let coin = {
-                let mut c = transfer_pkt.token.clone();
+                let mut c = Coin {
+                    denom: transfer_pkt.token.denom.clone(),
+                    amount: remainder_amount,
+                };
                 c.denom.remove_trace_prefix(&prefix);
                 c
             };
@@ -227,7 +236,10 @@ where
         } else {
             let prefix = TracePrefix::new(packet.port_id_on_b.clone(), packet.chan_id_on_b.clone());
             let coin = {
-                let mut c = transfer_pkt.token.clone();
+                let mut c = Coin {
+                    denom: transfer_pkt.token.denom.clone(),
+                    amount: remainder_amount,
+                };
                 c.denom.add_trace_prefix(prefix);
                 c
             };
@@ -248,6 +260,8 @@ where
                         orm_metadata.overflow_receiver()
                     ))
                 })?;
+
+            push_event_attr(&mut attributes, "operation", "mint");
         }
 
         push_event_attr(
