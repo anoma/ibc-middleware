@@ -1,5 +1,7 @@
 pub(crate) mod utils;
 
+use ibc_testkit::fixtures::core::channel::dummy_raw_packet;
+
 use self::utils::*;
 use super::*;
 
@@ -180,4 +182,86 @@ fn error_on_underflow() {
     assert!(orm.next.overflow_minted_coins.is_empty());
     assert!(orm.next.overflow_unescrowed_coins.is_empty());
     assert!(orm.next.overriden_packets_received.is_empty());
+}
+
+#[test]
+fn decode_ics20_msg_forwards_to_next_middleware() {
+    // NB: this packet doesn't have ICS-20 packet data
+    let packet: Packet = dummy_raw_packet(0, 1).try_into().unwrap();
+    assert!(matches!(
+        decode_ics20_msg(&packet),
+        Err(MiddlewareError::ForwardToNextMiddleware)
+    ));
+}
+
+#[test]
+fn decode_ics20_msg_on_valid_ics20_data() {
+    let packet = get_dummy_orm_packet(BASE_DENOM, 50, 100);
+    _ = decode_ics20_msg(&packet).unwrap();
+}
+
+#[test]
+fn decode_forward_msg_forwards_to_next_middleware_not_json() {
+    let packet_data = PacketData {
+        sender: addresses::BERTHA.signer(),
+        receiver: addresses::CARLOS.signer(),
+        token: Coin {
+            amount: 100u64.into(),
+            denom: BASE_DENOM.parse().unwrap(),
+        },
+        memo: String::new().into(),
+    };
+    let packet = Packet {
+        data: serde_json::to_vec(&packet_data).unwrap(),
+        ..get_dummy_orm_packet(BASE_DENOM, 50, 100)
+    };
+
+    assert!(matches!(
+        decode_overflow_receive_msg::<OrmPacketMetadata>(&packet),
+        Err(MiddlewareError::ForwardToNextMiddleware)
+    ));
+}
+
+#[test]
+fn decode_forward_msg_forwards_to_next_middleware_not_orm_msg() {
+    let packet_data = PacketData {
+        sender: addresses::BERTHA.signer(),
+        receiver: addresses::CARLOS.signer(),
+        token: Coin {
+            amount: 100u64.into(),
+            denom: BASE_DENOM.parse().unwrap(),
+        },
+        memo: r#"{"combo": "breaker"}"#.to_owned().into(),
+    };
+    let packet = Packet {
+        data: serde_json::to_vec(&packet_data).unwrap(),
+        ..get_dummy_orm_packet(BASE_DENOM, 50, 100)
+    };
+
+    assert!(matches!(
+        decode_overflow_receive_msg::<OrmPacketMetadata>(&packet),
+        Err(MiddlewareError::ForwardToNextMiddleware)
+    ));
+}
+
+#[test]
+fn decode_forward_msg_failure() {
+    let packet_data = PacketData {
+        sender: addresses::BERTHA.signer(),
+        receiver: addresses::CARLOS.signer(),
+        token: Coin {
+            amount: 100u64.into(),
+            denom: BASE_DENOM.parse().unwrap(),
+        },
+        memo: r#"{"overflow_receive": {"rip": ":("}}"#.to_owned().into(),
+    };
+    let packet = Packet {
+        data: serde_json::to_vec(&packet_data).unwrap(),
+        ..get_dummy_orm_packet(BASE_DENOM, 50, 100)
+    };
+
+    assert!(matches!(
+        decode_overflow_receive_msg::<OrmPacketMetadata>(&packet),
+        Err(MiddlewareError::Message(_))
+    ));
 }
