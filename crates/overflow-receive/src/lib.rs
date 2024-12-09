@@ -49,6 +49,7 @@ mod msg;
 #[cfg(test)]
 pub(crate) mod tests;
 
+use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -66,7 +67,7 @@ use ibc_core_channel_types::packet::Packet;
 use ibc_core_channel_types::Version;
 use ibc_core_host_types::identifiers::{ChannelId, ConnectionId, PortId};
 use ibc_core_router::module::Module as IbcCoreModule;
-use ibc_core_router_types::event::ModuleEventAttribute;
+use ibc_core_router_types::event::{ModuleEvent, ModuleEventAttribute};
 use ibc_core_router_types::module::ModuleExtras;
 use ibc_middleware_module::MiddlewareModule;
 use ibc_middleware_module_macros::from_middleware;
@@ -207,6 +208,7 @@ where
                 })?;
 
             push_event_attr(&mut attributes, "operation", "unescrow");
+            push_event_attr(&mut attributes, "denom", coin.denom.to_string());
         } else {
             let prefix = TracePrefix::new(packet.port_id_on_b.clone(), packet.chan_id_on_b.clone());
             let coin = {
@@ -228,17 +230,21 @@ where
                 })?;
 
             push_event_attr(&mut attributes, "operation", "mint");
+            push_event_attr(&mut attributes, "denom", coin.denom.to_string());
         }
 
+        push_event_attr(&mut attributes, "amount", remainder_amount.to_string());
+        push_event_attr(
+            &mut attributes,
+            "overflow-receiver",
+            orm_metadata.overflow_receiver().to_string(),
+        );
         push_event_attr(
             &mut attributes,
             "info",
-            format!(
-                "Redirecting {remainder_amount}{} to {}",
-                transfer_pkt.token.denom,
-                orm_metadata.overflow_receiver()
-            ),
+            "Successfully redirected funds with overflow receiver middleware",
         );
+        emit_event_with_attrs(extras, attributes);
 
         let override_packet = {
             let ics20_packet_data = PacketData {
@@ -331,6 +337,14 @@ where
     V: Into<String>,
 {
     attributes.push(event_attr(key, value));
+}
+
+#[inline]
+fn emit_event_with_attrs(extras: &mut ModuleExtras, attributes: Vec<ModuleEventAttribute>) {
+    extras.events.push(ModuleEvent {
+        kind: MODULE.to_owned(),
+        attributes,
+    });
 }
 
 fn decode_ics20_msg(packet: &Packet) -> Result<PacketData, MiddlewareError> {

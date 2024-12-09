@@ -17,6 +17,27 @@ fn happy_flow_mint() -> Result<(), crate::MiddlewareError> {
 
     orm.on_recv_packet_execute_inner(&mut extras, &packet, &addresses::RELAYER.signer())?;
 
+    assert_eq!(extras.events, {
+        let mut ex = ModuleExtras::empty();
+        emit_event_with_attrs(
+            &mut ex,
+            vec![
+                event_attr("operation", "mint"),
+                event_attr(
+                    "denom",
+                    format!("transfer/channel-{DST_CHANNEL_ID}/{BASE_DENOM}"),
+                ),
+                event_attr("amount", format!("{}", RECEIVED - TARGET)),
+                event_attr("overflow-receiver", addresses::CARLOS),
+                event_attr(
+                    "info",
+                    "Successfully redirected funds with overflow receiver middleware",
+                ),
+            ],
+        );
+        ex.events
+    });
+
     assert!(orm.next.overflow_unescrowed_coins.is_empty());
     assert_eq!(
         orm.next.overflow_minted_coins,
@@ -70,6 +91,24 @@ fn happy_flow_unescrow() -> Result<(), crate::MiddlewareError> {
     );
 
     orm.on_recv_packet_execute_inner(&mut extras, &packet, &addresses::RELAYER.signer())?;
+
+    assert_eq!(extras.events, {
+        let mut ex = ModuleExtras::empty();
+        emit_event_with_attrs(
+            &mut ex,
+            vec![
+                event_attr("operation", "unescrow"),
+                event_attr("denom", BASE_DENOM),
+                event_attr("amount", format!("{}", RECEIVED - TARGET)),
+                event_attr("overflow-receiver", addresses::CARLOS),
+                event_attr(
+                    "info",
+                    "Successfully redirected funds with overflow receiver middleware",
+                ),
+            ],
+        );
+        ex.events
+    });
 
     assert!(orm.next.overflow_minted_coins.is_empty());
     assert_eq!(
