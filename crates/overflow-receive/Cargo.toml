@@ -1,7 +1,7 @@
 [package]
 name = "ibc-middleware-overflow-receive"
 description = "IBC middleware that sends amounts overflowing some target to another address"
-version = "0.1.0"
+version = "0.2.0"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
