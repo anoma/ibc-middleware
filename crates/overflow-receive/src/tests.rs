@@ -127,10 +127,10 @@ fn forward_to_next_middleware_if_zero() {
         // upon finding that `TARGET == RECEIVED`
         assert!(std::panic::catch_unwind(|| {
             let mut orm = get_dummy_orm();
-            orm.inject_failure(FailurePoint::MintCoinsValidate);
+            orm.inject_failure(FailurePoint::MintCoinsExecute);
 
             assert_failure_injection(
-                FailurePoint::MintCoinsValidate,
+                FailurePoint::MintCoinsExecute,
                 orm.on_recv_packet_execute_inner(
                     &mut ModuleExtras::empty(),
                     &packet,

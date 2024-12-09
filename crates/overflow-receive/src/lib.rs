@@ -96,26 +96,10 @@ pub trait OverflowRecvContext {
     /// Error returned by fallible operations.
     type Error: fmt::Display;
 
-    /// Validate the minting of coins.
-    fn mint_coins_validate(
-        &self,
-        receiver: &Signer,
-        coin: &Coin<PrefixedDenom>,
-    ) -> Result<(), Self::Error>;
-
     /// Mint coins.
     fn mint_coins_execute(
         &mut self,
         receiver: &Signer,
-        coin: &Coin<PrefixedDenom>,
-    ) -> Result<(), Self::Error>;
-
-    /// Validate the unescrowing of coins.
-    fn unescrow_coins_validate(
-        &self,
-        receiver: &Signer,
-        port: &PortId,
-        channel: &ChannelId,
         coin: &Coin<PrefixedDenom>,
     ) -> Result<(), Self::Error>;
 
@@ -209,19 +193,6 @@ where
             };
 
             self.next
-                .unescrow_coins_validate(
-                    orm_metadata.overflow_receiver(),
-                    &packet.port_id_on_b,
-                    &packet.chan_id_on_b,
-                    &coin,
-                )
-                .map_err(|err| {
-                    MiddlewareError::Message(format!(
-                        "Validation of unescrow to {} failed: {err}",
-                        orm_metadata.overflow_receiver()
-                    ))
-                })?;
-            self.next
                 .unescrow_coins_execute(
                     orm_metadata.overflow_receiver(),
                     &packet.port_id_on_b,
@@ -247,14 +218,6 @@ where
                 c
             };
 
-            self.next
-                .mint_coins_validate(orm_metadata.overflow_receiver(), &coin)
-                .map_err(|err| {
-                    MiddlewareError::Message(format!(
-                        "Validation of mint to {} failed: {err}",
-                        orm_metadata.overflow_receiver()
-                    ))
-                })?;
             self.next
                 .mint_coins_execute(orm_metadata.overflow_receiver(), &coin)
                 .map_err(|err| {

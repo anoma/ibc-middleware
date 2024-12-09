@@ -29,7 +29,7 @@ impl StrExt for str {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FailurePoint {
-    MintCoinsValidate,
+    MintCoinsExecute,
     BeforeNextMiddlewareOnRecvPacket,
     AfterNextMiddlewareOnRecvPacket,
 }
@@ -159,32 +159,14 @@ impl<M> OverflowRecvContext for Store<M> {
     type PacketMetadata = OrmPacketMetadata;
     type Error = String;
 
-    fn mint_coins_validate(
-        &self,
-        _receiver: &Signer,
-        _coin: &Coin<PrefixedDenom>,
-    ) -> Result<(), Self::Error> {
-        self.check_failure_injection(FailurePoint::MintCoinsValidate)?;
-        Ok(())
-    }
-
     fn mint_coins_execute(
         &mut self,
         receiver: &Signer,
         coin: &Coin<PrefixedDenom>,
     ) -> Result<(), Self::Error> {
+        self.check_failure_injection(FailurePoint::MintCoinsExecute)?;
         self.overflow_minted_coins
             .push((receiver.clone(), coin.clone()));
-        Ok(())
-    }
-
-    fn unescrow_coins_validate(
-        &self,
-        _receiver: &Signer,
-        _port: &PortId,
-        _channel: &ChannelId,
-        _coin: &Coin<PrefixedDenom>,
-    ) -> Result<(), Self::Error> {
         Ok(())
     }
 
