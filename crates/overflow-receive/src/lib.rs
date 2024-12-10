@@ -100,14 +100,14 @@ pub trait OverflowRecvContext {
     /// Mint coins.
     fn mint_coins_execute(
         &mut self,
-        receiver: &Signer,
+        receiver: &<Self::PacketMetadata as PacketMetadata>::AccountId,
         coin: &Coin<PrefixedDenom>,
     ) -> Result<(), Self::Error>;
 
     /// Unescrow coins.
     fn unescrow_coins_execute(
         &mut self,
-        receiver: &Signer,
+        receiver: &<Self::PacketMetadata as PacketMetadata>::AccountId,
         port: &PortId,
         channel: &ChannelId,
         coin: &Coin<PrefixedDenom>,
@@ -163,9 +163,9 @@ where
         let (override_amount, remainder_amount) = match transfer_pkt
             .token
             .amount
-            .checked_sub(*orm_metadata.target_amount())
+            .checked_sub((*orm_metadata.target_amount()).into())
         {
-            Some(amt) if *amt != [0u64, 0, 0, 0] => (*orm_metadata.target_amount(), amt),
+            Some(amt) if *amt != [0u64, 0, 0, 0] => ((*orm_metadata.target_amount()).into(), amt),
             Some(_ /* = 0 */) => return Err(MiddlewareError::ForwardToNextMiddleware),
             None => {
                 return Err(MiddlewareError::Message(format!(

@@ -46,6 +46,9 @@ pub struct OverflowReceiveMetadata {
 }
 
 impl msg::PacketMetadata for OrmPacketMetadata {
+    type AccountId = Signer;
+    type Amount = Amount;
+
     fn is_overflow_receive_msg(msg: &serde_json::Map<String, serde_json::Value>) -> bool {
         msg.contains_key("overflow_receive")
     }
