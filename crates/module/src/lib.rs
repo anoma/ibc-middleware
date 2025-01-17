@@ -4,7 +4,7 @@
 
 use ibc_core_channel_types::acknowledgement::Acknowledgement;
 use ibc_core_channel_types::channel::{Counterparty, Order};
-use ibc_core_channel_types::error::{ChannelError, PacketError};
+use ibc_core_channel_types::error::ChannelError;
 use ibc_core_channel_types::packet::Packet;
 use ibc_core_channel_types::Version;
 use ibc_core_host_types::identifiers::{ChannelId, ConnectionId, PortId};
@@ -200,7 +200,7 @@ pub trait MiddlewareModule {
         packet: &Packet,
         acknowledgement: &Acknowledgement,
         relayer: &Signer,
-    ) -> Result<(), PacketError> {
+    ) -> Result<(), ChannelError> {
         self.next_middleware()
             .on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
     }
@@ -211,7 +211,7 @@ pub trait MiddlewareModule {
         packet: &Packet,
         acknowledgement: &Acknowledgement,
         relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
+    ) -> (ModuleExtras, Result<(), ChannelError>) {
         self.next_middleware_mut()
             .on_acknowledgement_packet_execute(packet, acknowledgement, relayer)
     }
@@ -221,7 +221,7 @@ pub trait MiddlewareModule {
         &self,
         packet: &Packet,
         relayer: &Signer,
-    ) -> Result<(), PacketError> {
+    ) -> Result<(), ChannelError> {
         self.next_middleware()
             .on_timeout_packet_validate(packet, relayer)
     }
@@ -231,7 +231,7 @@ pub trait MiddlewareModule {
         &mut self,
         packet: &Packet,
         relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
+    ) -> (ModuleExtras, Result<(), ChannelError>) {
         self.next_middleware_mut()
             .on_timeout_packet_execute(packet, relayer)
     }
