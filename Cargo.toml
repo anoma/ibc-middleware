@@ -35,49 +35,49 @@ default-features = false
 features = ["alloc", "derive"]
 
 [workspace.dependencies.ibc-core-router]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
 
 [workspace.dependencies.ibc-core-router-types]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
 
 [workspace.dependencies.ibc-core-host-types]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
 
 [workspace.dependencies.ibc-core-channel-types]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
 
 [workspace.dependencies.ibc-core-channel]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
 
 [workspace.dependencies.ibc-primitives]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
 
 [workspace.dependencies.ibc-app-transfer-types]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
 
 [workspace.dependencies.ibc-testkit]
-git = "https://github.com/heliaxdev/cosmos-ibc-rs"
-rev = "12ffb4bd01e962b86e2db00b10ef60921a9b8500"
+git = "https://github.com/cosmos/ibc-rs"
+rev = "a5f9fbf236cb26db3a76cde20ba43382de2d1ba4"
 default-features = false
 features = ["borsh", "serde"]
