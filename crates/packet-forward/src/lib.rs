@@ -64,7 +64,7 @@ use ibc_core_channel_types::acknowledgement::{
     Acknowledgement, AcknowledgementStatus, StatusValue as AckStatusValue,
 };
 use ibc_core_channel_types::channel::{Counterparty, Order};
-use ibc_core_channel_types::error::{ChannelError, PacketError};
+use ibc_core_channel_types::error::ChannelError;
 use ibc_core_channel_types::packet::Packet;
 use ibc_core_channel_types::timeout::{TimeoutHeight, TimeoutTimestamp};
 use ibc_core_channel_types::Version;
@@ -734,7 +734,7 @@ where
         packet: &Packet,
         acknowledgement: &Acknowledgement,
         relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
+    ) -> (ModuleExtras, Result<(), ChannelError>) {
         let mut extras = ModuleExtras::empty();
 
         match self.on_acknowledgement_packet_execute_inner(&mut extras, packet, acknowledgement) {
@@ -742,7 +742,7 @@ where
             Err(MiddlewareError::ForwardToNextMiddleware) => self
                 .next
                 .on_acknowledgement_packet_execute(packet, acknowledgement, relayer),
-            Err(MiddlewareError::Message(err)) => (extras, new_packet_error(err)),
+            Err(MiddlewareError::Message(err)) => (extras, new_channel_error(err)),
         }
     }
 
@@ -750,7 +750,7 @@ where
         &mut self,
         packet: &Packet,
         relayer: &Signer,
-    ) -> (ModuleExtras, Result<(), PacketError>) {
+    ) -> (ModuleExtras, Result<(), ChannelError>) {
         let mut extras = ModuleExtras::empty();
 
         match self.on_timeout_packet_execute_inner(&mut extras, packet, relayer) {
@@ -758,7 +758,7 @@ where
             Err(MiddlewareError::ForwardToNextMiddleware) => {
                 self.next.on_timeout_packet_execute(packet, relayer)
             }
-            Err(MiddlewareError::Message(err)) => (extras, new_packet_error(err)),
+            Err(MiddlewareError::Message(err)) => (extras, new_channel_error(err)),
         }
     }
 }
@@ -775,8 +775,8 @@ fn new_error_ack(message: impl fmt::Display) -> AcknowledgementStatus {
 }
 
 #[inline]
-fn new_packet_error(message: impl fmt::Display) -> Result<(), PacketError> {
-    Err(PacketError::Other {
+fn new_channel_error(message: impl fmt::Display) -> Result<(), ChannelError> {
+    Err(ChannelError::AppSpecific {
         description: format!("{MODULE} error: {message}"),
     })
 }

@@ -194,7 +194,7 @@ fn from_middleware_inner(
                 packet: &Packet,
                 acknowledgement: &Acknowledgement,
                 relayer: &Signer,
-            ) -> Result<(), PacketError> {
+            ) -> Result<(), ChannelError> {
                 self.middleware_on_acknowledgement_packet_validate(packet, acknowledgement, relayer)
             }
 
@@ -204,7 +204,7 @@ fn from_middleware_inner(
                 packet: &Packet,
                 acknowledgement: &Acknowledgement,
                 relayer: &Signer,
-            ) -> (ModuleExtras, Result<(), PacketError>) {
+            ) -> (ModuleExtras, Result<(), ChannelError>) {
                 self.middleware_on_acknowledgement_packet_execute(packet, acknowledgement, relayer)
             }
 
@@ -213,7 +213,7 @@ fn from_middleware_inner(
                 &self,
                 packet: &Packet,
                 relayer: &Signer,
-            ) -> Result<(), PacketError> {
+            ) -> Result<(), ChannelError> {
                 self.middleware_on_timeout_packet_validate(packet, relayer)
             }
 
@@ -222,7 +222,7 @@ fn from_middleware_inner(
                 &mut self,
                 packet: &Packet,
                 relayer: &Signer,
-            ) -> (ModuleExtras, Result<(), PacketError>) {
+            ) -> (ModuleExtras, Result<(), ChannelError>) {
                 self.middleware_on_timeout_packet_execute(packet, relayer)
             }
         }
